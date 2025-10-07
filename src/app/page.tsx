@@ -21,6 +21,8 @@ export default function MainPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
   const [enhancedSentence, setEnhancedSentence] = useState<string>('');
+  const [finalSentence, setFinalSentence] = useState<string>('');
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
 
   const hoverTimerRef = useRef<Record<string, NodeJS.Timeout | null>>({});
   const buttonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
@@ -91,6 +93,8 @@ export default function MainPage() {
     setHoverProgress({});
     setCurrentPage(0);
     setEnhancedSentence('');
+    setFinalSentence('');
+    setIsGenerating(false);
   }, []);
 
   // 선택 처리
@@ -124,7 +128,6 @@ export default function MainPage() {
           break;
         case 'predicate':
           setSelectedPredicate(buttonId);
-          setCurrentStep('complete');
           setHoverProgress({});
 
           // GPT API를 통해 문장 개선
@@ -132,18 +135,31 @@ export default function MainPage() {
           const predicateLabel = predicates[selectedCategory]?.find(p => p.id === buttonId)?.label || '';
           const originalSentence = buildSentence(selectedSubject, buttonId, selectedCategory);
 
+          // 즉시 원본 문장을 표시하고 생성 중 상태로 변경
+          setFinalSentence(originalSentence);
+          setIsGenerating(true);
+
+          // GPT API 호출 (비동기로 처리)
           getEnhancedSentence(subjectLabel, predicateLabel, selectedCategory, originalSentence)
             .then((enhanced) => {
-              setEnhancedSentence(enhanced);
+              console.log('✅ GPT 응답 수신:', enhanced);
+              setFinalSentence(enhanced);
+              setIsGenerating(false);
+
+              // GPT 응답 후 3초 대기 후 초기화
+              setTimeout(() => {
+                resetSelection();
+              }, 3000);
             })
             .catch((error) => {
-              console.error('Failed to enhance sentence:', error);
-              setEnhancedSentence(originalSentence);
-            });
+              console.error('❌ GPT 문장 생성 실패:', error);
+              setIsGenerating(false);
 
-          setTimeout(() => {
-            resetSelection();
-          }, 3000);
+              // 실패해도 3초 후 초기화
+              setTimeout(() => {
+                resetSelection();
+              }, 3000);
+            });
           break;
       }
     };
@@ -263,10 +279,19 @@ export default function MainPage() {
     };
   }, [currentStep, isMounted, getCurrentPageOptions, handleButtonHoverStart, handleButtonHoverEnd, showNextButton]);
 
-  // 실시간 문장 생성
+  // 실시간 문장 생성 (완성된 문장이 있으면 그것을 표시)
   const currentSentence = useMemo(() => {
+    // GPT가 생성 중일 때
+    if (isGenerating) {
+      return "GPT가 문장을 생성하는 중입니다...";
+    }
+    // finalSentence가 있으면 완성된 문장 표시
+    if (finalSentence) {
+      return finalSentence;
+    }
+    // 아니면 현재까지 선택된 단어들로 문장 생성
     return buildSentence(selectedSubject, selectedPredicate, selectedCategory);
-  }, [selectedSubject, selectedPredicate, selectedCategory]);
+  }, [selectedSubject, selectedPredicate, selectedCategory, finalSentence, isGenerating]);
 
   // 버튼 레이아웃 스타일
   const buttonContainerStyle = useMemo(() => {
@@ -311,24 +336,7 @@ export default function MainPage() {
     return null;
   }
 
-  // 완료 화면
-  if (currentStep === 'complete') {
-    return (
-      <div className="relative w-screen h-screen bg-[#15171A] overflow-hidden flex items-center justify-center">
-        <IrisTracker />
-        <div className="text-center">
-          <h1 className="text-[80px] font-bold text-[#4AC1F8] mb-8">완성된 문장</h1>
-          <p className="text-[60px] font-semibold text-white">
-            {enhancedSentence || currentSentence}
-          </p>
-          {enhancedSentence && enhancedSentence !== currentSentence && (
-            <p className="text-[30px] text-gray-500 mt-4">(원본: {currentSentence})</p>
-          )}
-          <p className="text-[30px] text-gray-400 mt-8">3초 후 처음으로 돌아갑니다...</p>
-        </div>
-      </div>
-    );
-  }
+  // 완료 화면 제거 - 바로 처음으로 돌아가도록 처리
 
   return (
     <>
