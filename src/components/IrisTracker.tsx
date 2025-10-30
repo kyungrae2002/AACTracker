@@ -56,6 +56,10 @@ const IrisTracker: React.FC = () => {
 
   const [isModelLoaded, setIsModelLoaded] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
+  const [error, setError] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [cameraPermissionRequested, setCameraPermissionRequested] = useState(false);
+  const [isProduction, setIsProduction] = useState(false);
 
   const faceMeshRef = useRef<FaceMeshInstance | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -71,40 +75,69 @@ const IrisTracker: React.FC = () => {
   const FRAME_SKIP = 2; // 2프레임마다 1번만 처리 (성능 최적화)
   const MAX_POSITION_CHANGE = 70; // 50 → 70 (더 빠른 이동 허용)
 
-  // MediaPipe 스크립트 로딩
-  const loadMediaPipeScripts = (): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      if (typeof window !== 'undefined' && typeof window.FaceMesh !== 'undefined') {
-        resolve();
-        return;
+  // 프로덕션 환경 체크
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const isHttps = window.location.protocol === 'https:';
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      setIsProduction(isHttps || !isLocalhost);
+
+      // HTTPS가 아닌 프로덕션 환경에서 경고
+      if (!isHttps && !isLocalhost) {
+        setError('시선 추적을 사용하려면 HTTPS 연결이 필요합니다. 보안 연결(https://)로 접속해주세요.');
       }
+    }
+  }, []);
 
-      const scripts = [
-        'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js',
-        'https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js',
-        'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js',
-        'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js'
-      ];
+  // MediaPipe 스크립트 로딩 (재시도 로직 포함)
+  const loadMediaPipeScripts = async (retryCount = 0): Promise<void> => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 1000;
 
-      let loadedCount = 0;
+    try {
+      return await new Promise((resolve, reject) => {
+        if (typeof window !== 'undefined' && typeof window.FaceMesh !== 'undefined') {
+          resolve();
+          return;
+        }
 
-      scripts.forEach((src) => {
-        const script = document.createElement('script');
-        script.src = src;
-        script.crossOrigin = 'anonymous';
-        script.onload = () => {
-          loadedCount++;
-          if (loadedCount === scripts.length) {
-            setTimeout(() => resolve(), 200);
-          }
-        };
-        script.onerror = (e) => {
-          console.error(`스크립트 로드 실패: ${src}`, e);
-          reject(e);
-        };
-        document.head.appendChild(script);
+        const scripts = [
+          'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js',
+          'https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js',
+          'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js',
+          'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js'
+        ];
+
+        let loadedCount = 0;
+        let hasError = false;
+
+        scripts.forEach((src) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.crossOrigin = 'anonymous';
+          script.onload = () => {
+            loadedCount++;
+            if (loadedCount === scripts.length && !hasError) {
+              setTimeout(() => resolve(), 200);
+            }
+          };
+          script.onerror = (e) => {
+            hasError = true;
+            console.error(`스크립트 로드 실패: ${src}`, e);
+            reject(new Error(`Failed to load script: ${src}`));
+          };
+          document.head.appendChild(script);
+        });
       });
-    });
+    } catch (error) {
+      if (retryCount < MAX_RETRIES) {
+        console.log(`스크립트 로드 재시도 중... (${retryCount + 1}/${MAX_RETRIES})`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        return loadMediaPipeScripts(retryCount + 1);
+      } else {
+        throw error;
+      }
+    }
   };
 
   // 비디오 프레임 처리 (프레임 스킵 적용)
@@ -302,6 +335,7 @@ const IrisTracker: React.FC = () => {
 
     const initMediaPipe = async () => {
       try {
+        setIsLoading(true);
         await loadMediaPipeScripts();
 
         if (typeof window !== 'undefined' && typeof window.FaceMesh !== 'undefined') {
@@ -322,9 +356,12 @@ const IrisTracker: React.FC = () => {
           faceMeshRef.current = faceMesh;
 
           setIsModelLoaded(true);
+          setIsLoading(false);
         }
       } catch (error) {
         console.error('MediaPipe Iris 초기화 실패:', error);
+        setError('시선 추적 모델을 로드할 수 없습니다. 페이지를 새로고침해주세요.');
+        setIsLoading(false);
       }
     };
 
@@ -349,6 +386,20 @@ const IrisTracker: React.FC = () => {
   // 카메라 시작
   const startCamera = async () => {
     try {
+      setIsLoading(true);
+      setError('');
+      setCameraPermissionRequested(true);
+
+      // HTTPS 체크
+      if (typeof window !== 'undefined') {
+        const isHttps = window.location.protocol === 'https:';
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+        if (!isHttps && !isLocalhost) {
+          throw new Error('HTTPS 연결이 필요합니다. 보안 연결(https://)로 접속해주세요.');
+        }
+      }
+
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter(device => device.kind === 'videoinput');
 
@@ -377,7 +428,12 @@ const IrisTracker: React.FC = () => {
       }
 
       if (!stream) {
-        throw lastError || new Error('카메라를 시작할 수 없습니다.');
+        const errorMessage = lastError instanceof Error ?
+          (lastError.name === 'NotAllowedError' ?
+            '카메라 권한이 거부되었습니다. 브라우저 설정에서 카메라 권한을 허용해주세요.' :
+            '카메라를 시작할 수 없습니다.') :
+          '카메라를 시작할 수 없습니다.';
+        throw new Error(errorMessage);
       }
 
       if (videoRef.current) {
@@ -388,21 +444,33 @@ const IrisTracker: React.FC = () => {
           videoRef.current?.play()
             .then(() => {
               setIsTracking(true);
+              setIsLoading(false);
+              setError('');
             })
             .catch((error) => {
               console.error('비디오 재생 실패:', error);
+              setError('비디오 재생에 실패했습니다.');
+              setIsLoading(false);
             });
         };
       }
     } catch (error: unknown) {
       console.error('카메라 시작 실패:', error);
+      const errorMessage = error instanceof Error ? error.message : '카메라를 시작할 수 없습니다.';
+      setError(errorMessage);
+      setIsLoading(false);
     }
   };
 
-  // 자동으로 카메라 시작
+  // 자동으로 카메라 시작 제거 - 수동 시작으로 변경
+  // 프로덕션 환경에서는 사용자가 명시적으로 카메라를 시작해야 함
   useEffect(() => {
-    if (isModelLoaded && !isTracking) {
-      startCamera();
+    // 로컬호스트에서만 자동 시작 (개발 편의성)
+    if (isModelLoaded && !isTracking && !cameraPermissionRequested) {
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (isLocalhost) {
+        startCamera();
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isModelLoaded]);
@@ -421,6 +489,55 @@ const IrisTracker: React.FC = () => {
 
   return (
     <>
+      {/* 카메라 권한 요청 UI - 프로덕션에서는 항상 표시 */}
+      {!isTracking && isModelLoaded && !cameraPermissionRequested && isProduction && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[999999] bg-white rounded-lg shadow-lg p-4 border-2 border-blue-500">
+          <div className="text-center">
+            <p className="text-sm mb-3 text-gray-700">시선 추적을 시작하시겠습니까?</p>
+            <button
+              onClick={startCamera}
+              disabled={isLoading}
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400"
+            >
+              {isLoading ? '시작 중...' : '시선 추적 시작'}
+            </button>
+            <p className="text-xs text-gray-500 mt-2">카메라 권한이 필요합니다</p>
+          </div>
+        </div>
+      )}
+
+      {/* 에러 메시지 표시 */}
+      {error && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[999999] bg-red-50 border-2 border-red-500 rounded-lg p-4 max-w-md">
+          <div className="flex items-start">
+            <svg className="w-6 h-6 text-red-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <p className="text-sm text-red-700">{error}</p>
+              {!isTracking && cameraPermissionRequested && (
+                <button
+                  onClick={startCamera}
+                  className="mt-2 text-sm text-blue-600 hover:text-blue-800 underline"
+                >
+                  다시 시도
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 로딩 상태 표시 */}
+      {isLoading && !error && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[999999] bg-blue-50 border-2 border-blue-500 rounded-lg p-4">
+          <div className="flex items-center">
+            <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full mr-3"></div>
+            <p className="text-sm text-blue-700">시선 추적 준비 중...</p>
+          </div>
+        </div>
+      )}
+
       {/* 숨겨진 비디오와 캔버스 */}
       <div className="fixed top-0 left-0 opacity-0 pointer-events-none" style={{ width: 0, height: 0, overflow: 'hidden' }}>
         <video
