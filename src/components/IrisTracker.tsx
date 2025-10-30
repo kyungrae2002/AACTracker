@@ -293,7 +293,8 @@ const IrisTracker: React.FC = () => {
     }
 
     ctx.restore();
-  }, [calculateIrisGaze]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // MediaPipe 초기화
   useEffect(() => {
@@ -403,7 +404,8 @@ const IrisTracker: React.FC = () => {
     if (isModelLoaded && !isTracking) {
       startCamera();
     }
-  }, [isModelLoaded, isTracking]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isModelLoaded]);
 
   // 컴포넌트 언마운트 시 정리
   useEffect(() => {
