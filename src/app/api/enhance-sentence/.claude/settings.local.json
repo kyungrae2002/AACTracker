@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/kyung/aactracker/src/app/**)",
+      "Read(//c/Users/kyung/aactracker/src/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

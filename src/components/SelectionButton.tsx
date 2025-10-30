@@ -10,11 +10,12 @@ interface SelectionButtonProps {
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   isDesktop?: boolean;
-  customWidth?: number; // 동적 너비 추가
+  customWidth?: number;
+  isNextButton?: boolean;
 }
 
 const SelectionButton = forwardRef<HTMLButtonElement, SelectionButtonProps>(
-  ({ id, label, progress, onClick, onMouseEnter, onMouseLeave, isDesktop = false, customWidth }, ref) => {
+  ({ id, label, progress, onClick, onMouseEnter, onMouseLeave, isDesktop = false, customWidth, isNextButton = false }, ref) => {
     // customWidth가 있으면 사용, 없으면 기본값 사용
     const buttonWidth = customWidth ? `${customWidth}px` : (isDesktop ? '480px' : '320px');
     const buttonHeight = isDesktop ? '380px' : '360px';  // 높이 감소
@@ -22,6 +23,22 @@ const SelectionButton = forwardRef<HTMLButtonElement, SelectionButtonProps>(
     const lineHeight = isDesktop ? '100px' : '78px';
 
     const getButtonStyle = () => {
+      // "다시" 또는 "질문" 버튼일 경우 보라색 테마 적용
+      if (isNextButton) {
+        if (progress > 0) {
+          const opacity = progress / 100;
+          return {
+            backgroundColor: `rgba(147, 51, 234, ${opacity})`, // 보라색 (purple-600)
+            color: progress > 50 ? '#FFFFFF' : '#9333EA',
+          };
+        }
+        return {
+          backgroundColor: 'transparent',
+          color: '#9333EA', // 보라색
+        };
+      }
+
+      // 기본 버튼 (노란색 테마)
       if (progress > 0) {
         const opacity = progress / 100;
         return {
@@ -47,7 +64,7 @@ const SelectionButton = forwardRef<HTMLButtonElement, SelectionButtonProps>(
           width: buttonWidth,
           height: buttonHeight,
           padding: '30px 50px',
-          border: '3px solid #FFDE4C',
+          border: isNextButton ? '3px solid #9333EA' : '3px solid #FFDE4C',
           ...getButtonStyle(),
         }}
       >

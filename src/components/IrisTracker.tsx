@@ -2,22 +2,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
-interface CalibrationPoint {
-  gazeX: number;
-  gazeY: number;
-  screenX: number;
-  screenY: number;
-}
-
-interface CalibrationMatrix {
-  a: number;
-  b: number;
-  c: number;
-  d: number;
-  tx: number;
-  ty: number;
-}
-
 interface Position {
   x: number;
   y: number;
@@ -72,34 +56,29 @@ const IrisTracker: React.FC = () => {
 
   const [isModelLoaded, setIsModelLoaded] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
-  const [status, setStatus] = useState('⏳ MediaPipe Iris 로딩 중...');
-  const [debugInfo, setDebugInfo] = useState('');
-  const [eyeData, setEyeData] = useState('');
-  const [sensitivity, setSensitivity] = useState(3.0);
-  const [sensitivityY, setSensitivityY] = useState(4.0);
-  const [calibrationMode, setCalibrationMode] = useState(false);
-  const [calibrationStep, setCalibrationStep] = useState(0);
-  const [calibrationPoints, setCalibrationPoints] = useState<CalibrationPoint[]>([]);
-  const [calibrationMatrix, setCalibrationMatrix] = useState<CalibrationMatrix | null>(null);
-  const [calibrationOffsets, setCalibrationOffsets] = useState<Position>({ x: 0, y: 0 });
 
   const faceMeshRef = useRef<FaceMeshInstance | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const smoothedPositionRef = useRef<Position>({ x: 0, y: 0 });
   const lastGazeRatioRef = useRef<GazeRatio>({ x: 0.5, y: 0.5 });
-  const smoothingFactor = 0.3;
+  const frameSkipCountRef = useRef(0);
+  const lastValidPositionRef = useRef<Position | null>(null);
 
-  // MediaPipe 스크립트 로딩 (Iris 포함)
+  const SMOOTHING_FACTOR = 0.22; // 0.15 → 0.22 (반응성 개선, 여전히 부드러움 유지)
+  const SENSITIVITY_X = 3.0;
+  const SENSITIVITY_Y = 4.0;
+  const FRAME_SKIP = 2; // 2프레임마다 1번만 처리 (성능 최적화)
+  const MAX_POSITION_CHANGE = 70; // 50 → 70 (더 빠른 이동 허용)
+
+  // MediaPipe 스크립트 로딩
   const loadMediaPipeScripts = (): Promise<void> => {
     return new Promise((resolve, reject) => {
       if (typeof window !== 'undefined' && typeof window.FaceMesh !== 'undefined') {
-        // // console.log('✅ MediaPipe 이미 로드됨');
         resolve();
         return;
       }
 
-      // // console.log('📦 MediaPipe Iris 스크립트 로딩 시작...');
       const scripts = [
         'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js',
         'https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js',
@@ -115,14 +94,12 @@ const IrisTracker: React.FC = () => {
         script.crossOrigin = 'anonymous';
         script.onload = () => {
           loadedCount++;
-          // // console.log(`✅ 스크립트 로드 완료 (${loadedCount}/${scripts.length}): ${src.split('/').pop()}`);
           if (loadedCount === scripts.length) {
-            // // console.log('🎉 모든 MediaPipe 스크립트 로드 완료!');
             setTimeout(() => resolve(), 200);
           }
         };
         script.onerror = (e) => {
-          console.error(`❌ 스크립트 로드 실패: ${src}`, e);
+          console.error(`스크립트 로드 실패: ${src}`, e);
           reject(e);
         };
         document.head.appendChild(script);
@@ -130,205 +107,29 @@ const IrisTracker: React.FC = () => {
     });
   };
 
-  // 비디오 프레임 처리 함수를 먼저 정의
+  // 비디오 프레임 처리 (프레임 스킵 적용)
   const processVideoFrame = useCallback(async () => {
     if (!isTracking || !faceMeshRef.current || !videoRef.current) {
       return;
     }
 
-    try {
-      if (videoRef.current.readyState >= 2 && faceMeshRef.current) {
-        await faceMeshRef.current.send({ image: videoRef.current });
+    frameSkipCountRef.current++;
+
+    // FRAME_SKIP 프레임마다 1번만 처리 (성능 최적화)
+    if (frameSkipCountRef.current % FRAME_SKIP === 0) {
+      try {
+        if (videoRef.current.readyState >= 2 && faceMeshRef.current) {
+          await faceMeshRef.current.send({ image: videoRef.current });
+        }
+      } catch (error) {
+        console.error('프레임 처리 오류:', error);
       }
-    } catch (error) {
-      console.error('💥 프레임 처리 오류:', error);
     }
 
     if (isTracking) {
       animationFrameRef.current = requestAnimationFrame(processVideoFrame);
     }
   }, [isTracking]);
-
-  // isTracking 상태 변화 추적
-  useEffect(() => {
-    // // console.log('🔄 isTracking 상태:', isTracking);
-
-    if (isTracking && faceMeshRef.current && videoRef.current) {
-      // // console.log('🚀 Iris 추적 루프 시작!');
-      processVideoFrame();
-    } else if (!isTracking && animationFrameRef.current) {
-      // // console.log('⏹️ Iris 추적 루프 정지');
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-  }, [isTracking, processVideoFrame]);
-
-  // MediaPipe 초기화 (Iris 모드)
-  useEffect(() => {
-    // Only run on client side
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const initMediaPipe = async () => {
-      try {
-        // console.log('🎬 MediaPipe Iris 초기화 시작...');
-        await loadMediaPipeScripts();
-
-        if (typeof window !== 'undefined' && typeof window.FaceMesh !== 'undefined') {
-          // console.log('🔧 FaceMesh 인스턴스 생성 (Iris 모드)...');
-
-          const faceMesh = new window.FaceMesh({
-            locateFile: (file: string) => {
-              const url = `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
-              // console.log(`📁 파일 요청: ${url}`);
-              return url;
-            }
-          });
-
-          faceMesh.setOptions({
-            maxNumFaces: 1,
-            refineLandmarks: true,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-          });
-
-          faceMesh.onResults(onFaceMeshResults);
-          faceMeshRef.current = faceMesh;
-
-          setIsModelLoaded(true);
-          setStatus('✅ MediaPipe Iris 준비 완료! 카메라를 시작하세요.');
-          // console.log('🎉 MediaPipe Iris 초기화 완료!');
-        } else {
-          throw new Error('FaceMesh를 찾을 수 없습니다');
-        }
-      } catch (error) {
-        console.error('💥 MediaPipe Iris 초기화 실패:', error);
-        setStatus(`❌ MediaPipe Iris 초기화 실패: ${(error as Error).message}`);
-      }
-    };
-
-    initMediaPipe();
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, []);
-
-  // MediaPipe 결과 처리 (Iris 전용)
-  const onFaceMeshResults = useCallback((results: FaceMeshResults) => {
-    // console.log('📊 MediaPipe Iris 결과 받음');
-
-    if (!canvasRef.current) {
-      // console.log('❌ 캔버스 없음');
-      return;
-    }
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.save();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.scale(-1, 1);
-    ctx.translate(-canvas.width, 0);
-
-    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-      const landmarks = results.multiFaceLandmarks[0];
-      // console.log(`✅ 얼굴 감지됨! 랜드마크 개수: ${landmarks.length}`);
-
-      drawIrisLandmarks(ctx, landmarks, canvas);
-      calculateIrisGaze(landmarks);
-
-      setDebugInfo(`Iris 추적 중, 랜드마크: ${landmarks.length}개`);
-
-    } else {
-      // console.log('❌ 얼굴 감지 안됨');
-      setDebugInfo('얼굴이 감지되지 않음');
-      setEyeData('감지 대기 중...');
-
-      if (gazeCursorRef.current) {
-        gazeCursorRef.current.style.display = 'none';
-      }
-    }
-
-    ctx.restore();
-  }, [isTracking, sensitivity, sensitivityY, calibrationOffsets, calibrationMatrix]);
-
-  // Iris 랜드마크 그리기
-  const drawIrisLandmarks = (ctx: CanvasRenderingContext2D, landmarks: Landmark[], canvas: HTMLCanvasElement) => {
-    const leftIrisIndices = [468, 469, 470, 471, 472];
-    const rightIrisIndices = [473, 474, 475, 476, 477];
-
-    const leftEyeOutline = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246];
-    const rightEyeOutline = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398];
-
-    ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
-    ctx.lineWidth = 1;
-
-    ctx.beginPath();
-    leftEyeOutline.forEach((index, i) => {
-      if (landmarks[index]) {
-        const point = landmarks[index];
-        const x = point.x * canvas.width;
-        const y = point.y * canvas.height;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-    });
-    ctx.closePath();
-    ctx.stroke();
-
-    ctx.beginPath();
-    rightEyeOutline.forEach((index, i) => {
-      if (landmarks[index]) {
-        const point = landmarks[index];
-        const x = point.x * canvas.width;
-        const y = point.y * canvas.height;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-    });
-    ctx.closePath();
-    ctx.stroke();
-
-    ctx.fillStyle = '#ff0000';
-
-    leftIrisIndices.forEach(index => {
-      if (landmarks[index]) {
-        const point = landmarks[index];
-        ctx.beginPath();
-        ctx.arc(point.x * canvas.width, point.y * canvas.height, 2, 0, 2 * Math.PI);
-        ctx.fill();
-      }
-    });
-
-    rightIrisIndices.forEach(index => {
-      if (landmarks[index]) {
-        const point = landmarks[index];
-        ctx.beginPath();
-        ctx.arc(point.x * canvas.width, point.y * canvas.height, 2, 0, 2 * Math.PI);
-        ctx.fill();
-      }
-    });
-
-    ctx.fillStyle = '#00ff00';
-    const leftIrisCenter = getIrisCenter(landmarks, leftIrisIndices);
-    const rightIrisCenter = getIrisCenter(landmarks, rightIrisIndices);
-
-    if (leftIrisCenter) {
-      ctx.beginPath();
-      ctx.arc(leftIrisCenter.x * canvas.width, leftIrisCenter.y * canvas.height, 4, 0, 2 * Math.PI);
-      ctx.fill();
-    }
-
-    if (rightIrisCenter) {
-      ctx.beginPath();
-      ctx.arc(rightIrisCenter.x * canvas.width, rightIrisCenter.y * canvas.height, 4, 0, 2 * Math.PI);
-      ctx.fill();
-    }
-  };
 
   // Iris 중심점 계산
   const getIrisCenter = (landmarks: Landmark[], irisIndices: number[]): Position | null => {
@@ -348,84 +149,6 @@ const IrisTracker: React.FC = () => {
       x: sumX / count,
       y: sumY / count
     };
-  };
-
-  // Iris 기반 시선 추적 계산
-  const calculateIrisGaze = (landmarks: Landmark[]) => {
-    try {
-      // console.log('👁️ Iris 기반 시선 계산 시작...');
-
-      const leftIrisCenter = getIrisCenter(landmarks, [468, 469, 470, 471, 472]);
-      const rightIrisCenter = getIrisCenter(landmarks, [473, 474, 475, 476, 477]);
-
-      if (!leftIrisCenter || !rightIrisCenter) {
-        // console.log('❌ Iris 중심점 감지 실패');
-        return;
-      }
-
-      // console.log('🔍 왼쪽 Iris 중심:', leftIrisCenter);
-      // console.log('🔍 오른쪽 Iris 중심:', rightIrisCenter);
-
-      const leftEyeBounds: EyeBounds = {
-        outer: landmarks[33],
-        inner: landmarks[133],
-        top: landmarks[159],
-        bottom: landmarks[145]
-      };
-
-      const rightEyeBounds: EyeBounds = {
-        outer: landmarks[263],
-        inner: landmarks[362],
-        top: landmarks[386],
-        bottom: landmarks[374]
-      };
-
-      const leftGazeRatio = calculateIrisRatio(leftIrisCenter, leftEyeBounds);
-      const rightGazeRatio = calculateIrisRatio(rightIrisCenter, rightEyeBounds);
-
-      // console.log('📊 왼쪽 Iris 비율:', leftGazeRatio);
-      // console.log('📊 오른쪽 Iris 비율:', rightGazeRatio);
-
-      const avgGazeRatio: GazeRatio = {
-        x: (leftGazeRatio.x + rightGazeRatio.x) / 2,
-        y: (leftGazeRatio.y + rightGazeRatio.y) / 2
-      };
-
-      lastGazeRatioRef.current = { x: avgGazeRatio.x, y: avgGazeRatio.y };
-
-      // console.log('🎯 평균 Iris 비율:', avgGazeRatio);
-
-      let screenX: number, screenY: number;
-
-      if (calibrationMatrix) {
-        const { a, b, c, d, tx, ty } = calibrationMatrix;
-        screenX = a * avgGazeRatio.x + b * avgGazeRatio.y + tx;
-        screenY = c * avgGazeRatio.x + d * avgGazeRatio.y + ty;
-        // console.log('🎯 고급 캘리브레이션 적용:', { screenX, screenY });
-      } else {
-        const normalizedX = 1 - avgGazeRatio.x;
-        const normalizedY = avgGazeRatio.y;
-
-        const adjustedX = normalizedX + calibrationOffsets.x;
-        const adjustedY = normalizedY + calibrationOffsets.y;
-
-        screenX = window.innerWidth * ((adjustedX - 0.5) * sensitivity + 0.5);
-        screenY = window.innerHeight * ((adjustedY - 0.5) * sensitivityY + 0.5);
-      }
-
-      // console.log('🖥️ 계산된 화면 좌표:', { screenX, screenY });
-
-      const boundedX = Math.max(30, Math.min(window.innerWidth - 30, screenX));
-      const boundedY = Math.max(30, Math.min(window.innerHeight - 30, screenY));
-
-      updateGazeCursor({ x: boundedX, y: boundedY });
-
-      setEyeData(`L:(${leftGazeRatio.x.toFixed(2)},${leftGazeRatio.y.toFixed(2)}) R:(${rightGazeRatio.x.toFixed(2)},${rightGazeRatio.y.toFixed(2)}) 평균:(${avgGazeRatio.x.toFixed(2)},${avgGazeRatio.y.toFixed(2)})`);
-
-    } catch (error) {
-      console.error('💥 Iris 시선 계산 오류:', error);
-      setDebugInfo(`Iris 계산 오류: ${(error as Error).message}`);
-    }
   };
 
   // Iris 위치 비율 계산
@@ -451,7 +174,7 @@ const IrisTracker: React.FC = () => {
     return { x: ratioX, y: ratioY };
   };
 
-  // 커서 업데이트 (화면 하단 절반으로 제한)
+  // 커서 업데이트 (화면 하단 절반으로 제한 + 강화된 스무딩)
   const updateGazeCursor = (position: Position) => {
     if (!gazeCursorRef.current) return;
 
@@ -463,12 +186,35 @@ const IrisTracker: React.FC = () => {
     // X 좌표는 전체 범위 사용
     const constrainedX = Math.max(30, Math.min(window.innerWidth - 30, position.x));
 
-    if (smoothedPositionRef.current.x === 0 && smoothedPositionRef.current.y === 0) {
-      smoothedPositionRef.current = { x: constrainedX, y: constrainedY };
+    let targetX = constrainedX;
+    let targetY = constrainedY;
+
+    // 이전 유효한 위치 보존
+    if (!lastValidPositionRef.current) {
+      lastValidPositionRef.current = { x: constrainedX, y: constrainedY };
+    } else {
+      // 급격한 변화 제한 (점프 방지)
+      const dx = constrainedX - lastValidPositionRef.current.x;
+      const dy = constrainedY - lastValidPositionRef.current.y;
+
+      if (Math.abs(dx) > MAX_POSITION_CHANGE) {
+        targetX = lastValidPositionRef.current.x + Math.sign(dx) * MAX_POSITION_CHANGE;
+      }
+      if (Math.abs(dy) > MAX_POSITION_CHANGE) {
+        targetY = lastValidPositionRef.current.y + Math.sign(dy) * MAX_POSITION_CHANGE;
+      }
+
+      lastValidPositionRef.current = { x: targetX, y: targetY };
     }
 
-    smoothedPositionRef.current.x += (constrainedX - smoothedPositionRef.current.x) * smoothingFactor;
-    smoothedPositionRef.current.y += (constrainedY - smoothedPositionRef.current.y) * smoothingFactor;
+    // 초기화
+    if (smoothedPositionRef.current.x === 0 && smoothedPositionRef.current.y === 0) {
+      smoothedPositionRef.current = { x: targetX, y: targetY };
+    }
+
+    // 부드러운 스무딩 적용
+    smoothedPositionRef.current.x += (targetX - smoothedPositionRef.current.x) * SMOOTHING_FACTOR;
+    smoothedPositionRef.current.y += (targetY - smoothedPositionRef.current.y) * SMOOTHING_FACTOR;
 
     gazeCursorRef.current.style.left = smoothedPositionRef.current.x + 'px';
     gazeCursorRef.current.style.top = smoothedPositionRef.current.y + 'px';
@@ -477,226 +223,203 @@ const IrisTracker: React.FC = () => {
     gazeCursorRef.current.style.opacity = '1';
   };
 
+  // Iris 기반 시선 추적 계산
+  const calculateIrisGaze = (landmarks: Landmark[]) => {
+    try {
+      const leftIrisCenter = getIrisCenter(landmarks, [468, 469, 470, 471, 472]);
+      const rightIrisCenter = getIrisCenter(landmarks, [473, 474, 475, 476, 477]);
+
+      if (!leftIrisCenter || !rightIrisCenter) {
+        return;
+      }
+
+      const leftEyeBounds: EyeBounds = {
+        outer: landmarks[33],
+        inner: landmarks[133],
+        top: landmarks[159],
+        bottom: landmarks[145]
+      };
+
+      const rightEyeBounds: EyeBounds = {
+        outer: landmarks[263],
+        inner: landmarks[362],
+        top: landmarks[386],
+        bottom: landmarks[374]
+      };
+
+      const leftGazeRatio = calculateIrisRatio(leftIrisCenter, leftEyeBounds);
+      const rightGazeRatio = calculateIrisRatio(rightIrisCenter, rightEyeBounds);
+
+      const avgGazeRatio: GazeRatio = {
+        x: (leftGazeRatio.x + rightGazeRatio.x) / 2,
+        y: (leftGazeRatio.y + rightGazeRatio.y) / 2
+      };
+
+      lastGazeRatioRef.current = { x: avgGazeRatio.x, y: avgGazeRatio.y };
+
+      const normalizedX = 1 - avgGazeRatio.x;
+      const normalizedY = avgGazeRatio.y;
+
+      const screenX = window.innerWidth * ((normalizedX - 0.5) * SENSITIVITY_X + 0.5);
+      const screenY = window.innerHeight * ((normalizedY - 0.5) * SENSITIVITY_Y + 0.5);
+
+      const boundedX = Math.max(30, Math.min(window.innerWidth - 30, screenX));
+      const boundedY = Math.max(30, Math.min(window.innerHeight - 30, screenY));
+
+      updateGazeCursor({ x: boundedX, y: boundedY });
+    } catch (error) {
+      console.error('Iris 시선 계산 오류:', error);
+    }
+  };
+
+  // MediaPipe 결과 처리
+  const onFaceMeshResults = useCallback((results: FaceMeshResults) => {
+    if (!canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.save();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+      const landmarks = results.multiFaceLandmarks[0];
+      calculateIrisGaze(landmarks);
+    } else {
+      if (gazeCursorRef.current) {
+        gazeCursorRef.current.style.display = 'none';
+      }
+    }
+
+    ctx.restore();
+  }, []);
+
+  // MediaPipe 초기화
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const initMediaPipe = async () => {
+      try {
+        await loadMediaPipeScripts();
+
+        if (typeof window !== 'undefined' && typeof window.FaceMesh !== 'undefined') {
+          const faceMesh = new window.FaceMesh({
+            locateFile: (file: string) => {
+              return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+            }
+          });
+
+          faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+          });
+
+          faceMesh.onResults(onFaceMeshResults);
+          faceMeshRef.current = faceMesh;
+
+          setIsModelLoaded(true);
+        }
+      } catch (error) {
+        console.error('MediaPipe Iris 초기화 실패:', error);
+      }
+    };
+
+    initMediaPipe();
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [onFaceMeshResults]);
+
+  // isTracking 상태 변화 추적
+  useEffect(() => {
+    if (isTracking && faceMeshRef.current && videoRef.current) {
+      processVideoFrame();
+    } else if (!isTracking && animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+  }, [isTracking, processVideoFrame]);
 
   // 카메라 시작
   const startCamera = async () => {
     try {
-      // console.log('🎬 Iris 추적 카메라 시작...');
-      setStatus('📹 카메라 연결 중...');
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: 640,
-          height: 480,
-          facingMode: 'user'
+      if (videoDevices.length === 0) {
+        throw new Error('카메라를 찾을 수 없습니다.');
+      }
+
+      // 여러 constraint 시도
+      const constraintsList = [
+        { video: { width: 640, height: 480, facingMode: 'user' } },
+        { video: { width: 640, height: 480 } },
+        { video: true },
+        { video: { deviceId: videoDevices[0].deviceId } }
+      ];
+
+      let stream = null;
+      let lastError = null;
+
+      for (const constraints of constraintsList) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          break;
+        } catch (error) {
+          lastError = error;
         }
-      });
+      }
 
-      // console.log('✅ 비디오 스트림 획득');
+      if (!stream) {
+        throw lastError || new Error('카메라를 시작할 수 없습니다.');
+      }
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
 
         videoRef.current.onloadedmetadata = () => {
-          // console.log('🎯 비디오 메타데이터 로드 완료');
-          videoRef.current?.play(); // 비디오 재생 시작
-          setIsTracking(true);
-          setStatus('👁️ Iris 추적 중...');
+          videoRef.current?.play()
+            .then(() => {
+              setIsTracking(true);
+            })
+            .catch((error) => {
+              console.error('비디오 재생 실패:', error);
+            });
         };
       }
-
-    } catch (error) {
-      console.error('💥 카메라 시작 실패:', error);
-      setStatus(`❌ 카메라 오류: ${(error as Error).message}`);
+    } catch (error: any) {
+      console.error('카메라 시작 실패:', error);
     }
   };
 
-  // 컴포넌트 마운트 시 자동으로 카메라 시작
+  // 자동으로 카메라 시작
   useEffect(() => {
     if (isModelLoaded && !isTracking) {
-      // console.log('🚀 자동으로 카메라 시작...');
       startCamera();
     }
   }, [isModelLoaded]);
 
-  // 카메라 정지
-  const stopCamera = () => {
-    // console.log('🛑 Iris 추적 카메라 정지');
-    setIsTracking(false);
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-
-    if (gazeCursorRef.current) {
-      gazeCursorRef.current.style.display = 'none';
-    }
-
-    setStatus('⏹️ 카메라 정지됨');
-    setDebugInfo('');
-    setEyeData('');
-  };
-
-  // 간단한 캘리브레이션
-  const quickCalibrate = () => {
-    if (!isTracking) {
-      alert('먼저 시선 추적을 시작해주세요.');
-      return;
-    }
-
-    const centerX = window.innerWidth / 2;
-    const centerY = window.innerHeight / 2;
-
-    const currentX = parseFloat(gazeCursorRef.current?.style.left || '0');
-    const currentY = parseFloat(gazeCursorRef.current?.style.top || '0');
-    // console.log('🎯 현재 커서 위치:', { currentX, currentY });
-
-    const offsetX = (centerX - currentX) / window.innerWidth * 0.5;
-    const offsetY = (centerY - currentY) / window.innerHeight * 0.5;
-
-    setCalibrationOffsets({ x: offsetX, y: offsetY });
-    setDebugInfo(`캘리브레이션 완료! 오프셋: (${offsetX.toFixed(3)}, ${offsetY.toFixed(3)})`);
-    // console.log('🎯 캘리브레이션 완료:', { offsetX, offsetY });
-  };
-
-  // 5점 캘리브레이션 시작
-  const startAdvancedCalibration = () => {
-    if (!isTracking) {
-      alert('먼저 시선 추적을 시작해주세요.');
-      return;
-    }
-
-    setCalibrationMode(true);
-    setCalibrationStep(1);
-    setCalibrationPoints([]);
-    setCalibrationMatrix(null);
-    setDebugInfo('🎯 5점 캘리브레이션 시작! 빨간 점을 바라보고 클릭하세요 (1/5)');
-    // console.log('🎯 5점 캘리브레이션 시작');
-  };
-
-  // 캘리브레이션 점 수집
-  const collectCalibrationPoint = () => {
-    if (!calibrationMode || !gazeCursorRef.current) return;
-
-    const currentGazeRatio = lastGazeRatioRef.current;
-    if (!currentGazeRatio) {
-      alert('홍채를 감지할 수 없습니다. 카메라를 확인해주세요.');
-      return;
-    }
-
-    const targetPoints = [
-      { x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 },
-      { x: window.innerWidth * 0.2, y: window.innerHeight * 0.2 },
-      { x: window.innerWidth * 0.8, y: window.innerHeight * 0.2 },
-      { x: window.innerWidth * 0.2, y: window.innerHeight * 0.8 },
-      { x: window.innerWidth * 0.8, y: window.innerHeight * 0.8 }
-    ];
-
-    const target = targetPoints[calibrationStep - 1];
-    const point: CalibrationPoint = {
-      gazeX: currentGazeRatio.x,
-      gazeY: currentGazeRatio.y,
-      screenX: target.x,
-      screenY: target.y
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
-
-    const newPoints = [...calibrationPoints, point];
-    setCalibrationPoints(newPoints);
-
-    // console.log(`✅ 캘리브레이션 점 ${calibrationStep}/5 수집:`, point);
-
-    if (calibrationStep < 5) {
-      setCalibrationStep(calibrationStep + 1);
-      setDebugInfo(`🎯 캘리브레이션 진행 중... 다음 빨간 점을 바라보고 클릭하세요 (${calibrationStep + 1}/5)`);
-    } else {
-      const matrix = calculateTransformMatrix(newPoints);
-      setCalibrationMatrix(matrix);
-      setCalibrationMode(false);
-      setCalibrationStep(0);
-      setDebugInfo('🎉 5점 캘리브레이션 완료! 고정밀 시선 추적이 활성화되었습니다.');
-      // console.log('🎉 5점 캘리브레이션 완료, 변환 행렬:', matrix);
-    }
-  };
-
-  // 변환 행렬 계산
-  const calculateTransformMatrix = (points: CalibrationPoint[]): CalibrationMatrix | null => {
-    if (points.length < 3) return null;
-
-    let sumGx = 0, sumGy = 0, sumSx = 0, sumSy = 0;
-    let sumGxSx = 0, sumGySx = 0, sumGxSy = 0, sumGySy = 0;
-    let sumGxGx = 0, sumGyGy = 0;
-    const n = points.length;
-
-    points.forEach(p => {
-      sumGx += p.gazeX;
-      sumGy += p.gazeY;
-      sumSx += p.screenX;
-      sumSy += p.screenY;
-      sumGxSx += p.gazeX * p.screenX;
-      sumGySx += p.gazeY * p.screenX;
-      sumGxSy += p.gazeX * p.screenY;
-      sumGySy += p.gazeY * p.screenY;
-      sumGxGx += p.gazeX * p.gazeX;
-      sumGyGy += p.gazeY * p.gazeY;
-    });
-
-    const a = (n * sumGxSx - sumGx * sumSx) / (n * sumGxGx - sumGx * sumGx);
-    const b = (n * sumGySx - sumGy * sumSx) / (n * sumGyGy - sumGy * sumGy);
-    const tx = (sumSx - a * sumGx - b * sumGy) / n;
-
-    const c = (n * sumGxSy - sumGx * sumSy) / (n * sumGxGx - sumGx * sumGx);
-    const d = (n * sumGySy - sumGy * sumSy) / (n * sumGyGy - sumGy * sumGy);
-    const ty = (sumSy - c * sumGx - d * sumGy) / n;
-
-    return { a, b, c, d, tx, ty };
-  };
-
-  // 캘리브레이션 리셋
-  const resetCalibration = () => {
-    setCalibrationOffsets({ x: 0, y: 0 });
-    setCalibrationMode(false);
-    setCalibrationStep(0);
-    setCalibrationPoints([]);
-    setCalibrationMatrix(null);
-    setDebugInfo('🔄 모든 캘리브레이션 리셋됨');
-    // console.log('🔄 캘리브레이션 리셋');
-  };
-
-  // 테스트 커서
-  const showTestCursor = () => {
-    if (gazeCursorRef.current) {
-      const element = gazeCursorRef.current;
-
-      element.style.display = 'block';
-      element.style.visibility = 'visible';
-      element.style.opacity = '1';
-      element.style.left = (window.innerWidth / 2) + 'px';
-      element.style.top = (window.innerHeight / 2) + 'px';
-      element.style.transform = 'translate(-50%, -50%)';
-      element.style.zIndex = '99999';
-      element.style.position = 'fixed';
-      element.style.pointerEvents = 'none';
-
-      element.style.width = '30px';
-      element.style.height = '30px';
-      element.style.backgroundColor = '#ff0000';
-      element.style.border = '5px solid white';
-      element.style.borderRadius = '50%';
-      element.style.boxShadow = '0 0 20px rgba(255, 0, 0, 1)';
-
-      setDebugInfo('🔴 강화된 테스트 커서 표시됨 - 빨간 원이 화면 중앙에 보이시나요?');
-    }
-  };
+  }, []);
 
   return (
     <>
-      {/* 숨겨진 비디오와 캔버스 (화면에 표시되지 않음) */}
+      {/* 숨겨진 비디오와 캔버스 */}
       <div className="fixed top-0 left-0 opacity-0 pointer-events-none" style={{ width: 0, height: 0, overflow: 'hidden' }}>
         <video
           ref={videoRef}
@@ -713,7 +436,7 @@ const IrisTracker: React.FC = () => {
         />
       </div>
 
-      {/* 시선 추적 빨간 점 커서 */}
+      {/* 시선 추적 커서 */}
       <div
         id="gaze-tracking-cursor"
         ref={gazeCursorRef}

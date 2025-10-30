@@ -12,6 +12,29 @@ interface AALayoutProps {
   isDesktop?: boolean;
 }
 
+// 스타일 상수
+const STYLES = {
+  desktop: {
+    backButtonWidth: '180px',
+    titleFontSize: '32px',
+    modeFontSize: '32px',
+    outputHeight: '110px',
+    outputFontSize: '36px',
+  },
+  mobile: {
+    backButtonWidth: '150px',
+    titleFontSize: '28px',
+    modeFontSize: '28px',
+    outputHeight: '90px',
+    outputFontSize: '32px',
+  },
+  common: {
+    buttonHeight: '60px',
+    buttonFontSize: '24px',
+    sideButtonWidth: '140px',
+  }
+};
+
 export default function AALayout({
   children,
   title = '상황 선택',
@@ -21,18 +44,12 @@ export default function AALayout({
   outputText = '',
   isDesktop = false,
 }: AALayoutProps) {
-  // 디바이스별 스타일 변수 (크기 축소)
-  const backButtonWidth = isDesktop ? '180px' : '150px';
-  const buttonHeight = '60px'; // 버튼 높이 축소
-  const titleFontSize = isDesktop ? '32px' : '28px';
-  const modeFontSize = isDesktop ? '32px' : '28px';
-  const outputHeight = isDesktop ? '110px' : '90px';
-  const outputFontSize = isDesktop ? '36px' : '32px';
-  const buttonFontSize = '24px'; // 버튼 텍스트 크기 축소
+  const style = isDesktop ? STYLES.desktop : STYLES.mobile;
+  const { buttonHeight, buttonFontSize, sideButtonWidth } = STYLES.common;
 
   return (
     <div className="relative w-screen h-screen bg-[#15171A] overflow-hidden">
-      {/* 상단 영역 - 위치 조정 */}
+      {/* 상단 영역 */}
       <div className="absolute left-[56px] right-[56px] top-[40px]">
         <div className="flex items-start justify-between">
           {/* 좌측: 뒤로가기 + 깜--빡 */}
@@ -41,7 +58,7 @@ export default function AALayout({
               onClick={onBack}
               className="flex items-center justify-center"
               style={{
-                width: backButtonWidth,
+                width: style.backButtonWidth,
                 height: buttonHeight,
                 padding: '15px 25px',
                 border: '2px solid #4AC1F8',
@@ -50,10 +67,7 @@ export default function AALayout({
             >
               <span
                 className="font-pretendard font-semibold text-[#4AC1F8]"
-                style={{
-                  fontSize: buttonFontSize,
-                  lineHeight: '30px',
-                }}
+                style={{ fontSize: buttonFontSize, lineHeight: '30px' }}
               >
                 뒤로가기
               </span>
@@ -63,10 +77,7 @@ export default function AALayout({
               className={`font-pretendard font-semibold transition-colors text-center ${
                 blinkMode === 'single' ? 'text-white' : 'text-[#656565]'
               }`}
-              style={{
-                fontSize: modeFontSize,
-                lineHeight: modeFontSize,
-              }}
+              style={{ fontSize: style.modeFontSize, lineHeight: style.modeFontSize }}
             >
               깜--빡
             </button>
@@ -76,8 +87,8 @@ export default function AALayout({
           <h1
             className="font-pretendard font-semibold text-white"
             style={{
-              fontSize: titleFontSize,
-              lineHeight: titleFontSize,
+              fontSize: style.titleFontSize,
+              lineHeight: style.titleFontSize,
               marginTop: '15px',
             }}
           >
@@ -90,17 +101,14 @@ export default function AALayout({
               <button
                 className="flex items-center justify-center bg-[#4AC1F8] rounded-lg"
                 style={{
-                  width: '140px',
+                  width: sideButtonWidth,
                   height: buttonHeight,
                   padding: '15px 20px',
                 }}
               >
                 <span
                   className="font-pretendard font-semibold text-[#15171A]"
-                  style={{
-                    fontSize: buttonFontSize,
-                    lineHeight: '30px',
-                  }}
+                  style={{ fontSize: buttonFontSize, lineHeight: '30px' }}
                 >
                   이모티콘
                 </span>
@@ -108,7 +116,7 @@ export default function AALayout({
               <button
                 className="flex items-center justify-center rounded-lg"
                 style={{
-                  width: '140px',
+                  width: sideButtonWidth,
                   height: buttonHeight,
                   padding: '15px 20px',
                   border: '2px solid #4AC1F8',
@@ -116,10 +124,7 @@ export default function AALayout({
               >
                 <span
                   className="font-pretendard font-semibold text-[#4AC1F8]"
-                  style={{
-                    fontSize: buttonFontSize,
-                    lineHeight: '30px',
-                  }}
+                  style={{ fontSize: buttonFontSize, lineHeight: '30px' }}
                 >
                   문장
                 </span>
@@ -130,10 +135,7 @@ export default function AALayout({
               className={`font-pretendard font-semibold transition-colors text-center ${
                 blinkMode === 'double' ? 'text-white' : 'text-[#656565]'
               }`}
-              style={{
-                fontSize: modeFontSize,
-                lineHeight: modeFontSize,
-              }}
+              style={{ fontSize: style.modeFontSize, lineHeight: style.modeFontSize }}
             >
               깜빡깜빡
             </button>
@@ -141,7 +143,7 @@ export default function AALayout({
         </div>
       </div>
 
-      {/* 메인 컨텐츠 영역 (버튼들) */}
+      {/* 메인 컨텐츠 영역 */}
       {children}
 
       {/* 하단 텍스트 출력 영역 */}
@@ -151,7 +153,7 @@ export default function AALayout({
           left: '56px',
           bottom: '50px',
           right: '56px',
-          height: outputHeight,
+          height: style.outputHeight,
           padding: '30px 34px',
           background: 'rgba(255, 255, 255, 0.04)',
           border: '2px solid #FFFFFF',
@@ -159,10 +161,7 @@ export default function AALayout({
       >
         <span
           className="font-pretendard font-semibold text-white"
-          style={{
-            fontSize: outputFontSize,
-            lineHeight: outputFontSize,
-          }}
+          style={{ fontSize: style.outputFontSize, lineHeight: style.outputFontSize }}
         >
           {outputText}
         </span>
