@@ -403,11 +403,7 @@ export default function MainPage() {
               isDesktop={isDesktop}
               customWidth={buttonContainerStyle.buttonWidth}
               isNextButton={true}
-              onClick={() => {
-                if (handleSelectionRef.current) {
-                  handleSelectionRef.current('question_mode');
-                }
-              }}
+              onClick={() => handleSelection('question_mode')}
               onMouseEnter={() => handleButtonHoverStart('question_mode')}
               onMouseLeave={() => handleButtonHoverEnd('question_mode')}
             />
@@ -425,11 +421,7 @@ export default function MainPage() {
               isDesktop={isDesktop}
               customWidth={buttonContainerStyle.buttonWidth}
               isNextButton={true}
-              onClick={() => {
-                if (handleSelectionRef.current) {
-                  handleSelectionRef.current('next_page');
-                }
-              }}
+              onClick={() => handleSelection('next_page')}
               onMouseEnter={() => handleButtonHoverStart('next_page')}
               onMouseLeave={() => handleButtonHoverEnd('next_page')}
             />

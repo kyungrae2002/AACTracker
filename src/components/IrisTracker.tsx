@@ -403,7 +403,7 @@ const IrisTracker: React.FC = () => {
     if (isModelLoaded && !isTracking) {
       startCamera();
     }
-  }, [isModelLoaded]);
+  }, [isModelLoaded, isTracking]);
 
   // 컴포넌트 언마운트 시 정리
   useEffect(() => {
