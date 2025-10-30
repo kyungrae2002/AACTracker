@@ -293,7 +293,7 @@ const IrisTracker: React.FC = () => {
     }
 
     ctx.restore();
-  }, []);
+  }, [calculateIrisGaze]);
 
   // MediaPipe 초기화
   useEffect(() => {
@@ -393,7 +393,7 @@ const IrisTracker: React.FC = () => {
             });
         };
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('카메라 시작 실패:', error);
     }
   };

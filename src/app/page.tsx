@@ -350,7 +350,7 @@ export default function MainPage() {
       gap: `${gap}px`,
       buttonWidth: buttonWidth,
     };
-  }, [isMounted, windowSize, getCurrentPageOptions, showNextButton, isDesktop]);
+  }, [isMounted, windowSize, getCurrentPageOptions, showNextButton, isDesktop, selection.currentStep]);
 
   // 클라이언트 마운트 전에는 null 반환
   if (!isMounted) {
