@@ -12,10 +12,11 @@ interface SelectionButtonProps {
   isDesktop?: boolean;
   customWidth?: number;
   isNextButton?: boolean;
+  isSelected?: boolean;
 }
 
 const SelectionButton = forwardRef<HTMLButtonElement, SelectionButtonProps>(
-  ({ id, label, progress, onClick, onMouseEnter, onMouseLeave, isDesktop = false, customWidth, isNextButton = false }, ref) => {
+  ({ id, label, progress, onClick, onMouseEnter, onMouseLeave, isDesktop = false, customWidth, isNextButton = false, isSelected = false }, ref) => {
     // customWidth가 있으면 사용, 없으면 기본값 사용
     const buttonWidth = customWidth ? `${customWidth}px` : (isDesktop ? '480px' : '320px');
     const buttonHeight = isDesktop ? '380px' : '360px';  // 높이 감소
@@ -59,12 +60,17 @@ const SelectionButton = forwardRef<HTMLButtonElement, SelectionButtonProps>(
         onClick={onClick}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
-        className="flex items-center justify-center rounded-[30px] transition-colors duration-100"
+        className="flex items-center justify-center rounded-[30px] transition-all duration-200"
         style={{
           width: buttonWidth,
           height: buttonHeight,
           padding: '30px 50px',
           border: isNextButton ? '3px solid #9333EA' : '3px solid #FFDE4C',
+          transform: isSelected ? 'scale(1.1)' : 'scale(1)',
+          boxShadow: isSelected
+            ? (isNextButton ? '0 0 30px rgba(147, 51, 234, 0.8)' : '0 0 30px rgba(255, 222, 76, 0.8)')
+            : 'none',
+          zIndex: isSelected ? 10 : 1,
           ...getButtonStyle(),
         }}
       >

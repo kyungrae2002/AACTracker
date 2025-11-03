@@ -49,7 +49,11 @@ declare global {
   }
 }
 
-const IrisTracker: React.FC = () => {
+interface IrisTrackerProps {
+  onZoneChange?: (direction: 'left' | 'right') => void;
+}
+
+const IrisTracker: React.FC<IrisTrackerProps> = ({ onZoneChange }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gazeCursorRef = useRef<HTMLDivElement>(null);
@@ -68,6 +72,11 @@ const IrisTracker: React.FC = () => {
   const lastGazeRatioRef = useRef<GazeRatio>({ x: 0.5, y: 0.5 });
   const frameSkipCountRef = useRef(0);
   const lastValidPositionRef = useRef<Position | null>(null);
+
+  // Zone 기반 이동을 위한 refs
+  const currentZoneRef = useRef<'left' | 'center' | 'right'>('center');
+  const lastZoneChangeRef = useRef<number>(0);
+  const ZONE_CHANGE_COOLDOWN = 1000; // 1초 쿨다운
 
   const SMOOTHING_FACTOR = 0.22; // 0.15 → 0.22 (반응성 개선, 여전히 부드러움 유지)
   const SENSITIVITY_X = 3.0;
@@ -207,6 +216,43 @@ const IrisTracker: React.FC = () => {
     return { x: ratioX, y: ratioY };
   };
 
+  // Zone 감지 함수 (화면 3등분)
+  const detectZone = useCallback((position: Position) => {
+    const now = Date.now();
+    const screenWidth = window.innerWidth;
+    const zoneWidth = screenWidth / 3;
+
+    // 현재 zone 계산
+    let newZone: 'left' | 'center' | 'right';
+    if (position.x < zoneWidth) {
+      newZone = 'left';
+    } else if (position.x < zoneWidth * 2) {
+      newZone = 'center';
+    } else {
+      newZone = 'right';
+    }
+
+    const prevZone = currentZoneRef.current;
+
+    // Zone이 변경되었고 center로 돌아왔을 때
+    if (prevZone !== 'center' && newZone === 'center') {
+      // 쿨다운 체크
+      if (now - lastZoneChangeRef.current > ZONE_CHANGE_COOLDOWN) {
+        if (prevZone === 'left' && onZoneChange) {
+          console.log('👈 Left zone to center - move selection left');
+          onZoneChange('left');
+          lastZoneChangeRef.current = now;
+        } else if (prevZone === 'right' && onZoneChange) {
+          console.log('👉 Right zone to center - move selection right');
+          onZoneChange('right');
+          lastZoneChangeRef.current = now;
+        }
+      }
+    }
+
+    currentZoneRef.current = newZone;
+  }, [onZoneChange, ZONE_CHANGE_COOLDOWN]);
+
   // 커서 업데이트 (화면 하단 절반으로 제한 + 강화된 스무딩)
   const updateGazeCursor = (position: Position) => {
     if (!gazeCursorRef.current) return;
@@ -254,6 +300,9 @@ const IrisTracker: React.FC = () => {
     gazeCursorRef.current.style.display = 'block';
     gazeCursorRef.current.style.visibility = 'visible';
     gazeCursorRef.current.style.opacity = '1';
+
+    // Zone 감지 호출
+    detectZone(smoothedPositionRef.current);
   };
 
   // Iris 기반 시선 추적 계산
@@ -327,7 +376,7 @@ const IrisTracker: React.FC = () => {
 
     ctx.restore();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [detectZone]);
 
   // MediaPipe 초기화
   useEffect(() => {
@@ -591,6 +640,53 @@ const IrisTracker: React.FC = () => {
           }
         `
       }} />
+
+      {/* Zone 시각화 - 화면 3등분 */}
+      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 999998 }}>
+        {/* 왼쪽 영역 */}
+        <div
+          className="absolute top-0 left-0 h-full opacity-20"
+          style={{
+            width: '33.33%',
+            backgroundColor: '#3B82F6',
+            borderRight: '2px dashed #60A5FA'
+          }}
+        >
+          <div className="flex items-center justify-center h-full text-white text-4xl font-bold opacity-50">
+            ← 왼쪽
+          </div>
+        </div>
+
+        {/* 중앙 영역 */}
+        <div
+          className="absolute top-0 h-full opacity-20"
+          style={{
+            left: '33.33%',
+            width: '33.33%',
+            backgroundColor: '#10B981',
+            borderLeft: '2px dashed #60A5FA',
+            borderRight: '2px dashed #F87171'
+          }}
+        >
+          <div className="flex items-center justify-center h-full text-white text-4xl font-bold opacity-50">
+            중앙
+          </div>
+        </div>
+
+        {/* 오른쪽 영역 */}
+        <div
+          className="absolute top-0 right-0 h-full opacity-20"
+          style={{
+            width: '33.33%',
+            backgroundColor: '#EF4444',
+            borderLeft: '2px dashed #F87171'
+          }}
+        >
+          <div className="flex items-center justify-center h-full text-white text-4xl font-bold opacity-50">
+            오른쪽 →
+          </div>
+        </div>
+      </div>
     </>
   );
 };
