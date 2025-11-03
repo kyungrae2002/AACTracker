@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import IrisTracker from '@/components/IrisTracker';
 import AALayout from '@/components/AALayout';
 import SelectionButton from '@/components/SelectionButton';
 import { categories, subjects, predicates, buildSentence, WordOption } from '@/data/wordData';
 import { getEnhancedSentence } from '@/lib/openai';
+import { useRegisterIrisHandlers } from '@/contexts/IrisTrackerContext';
 
 type SelectionStep = 'category' | 'subject' | 'predicate';
 
@@ -16,7 +16,6 @@ export default function MainPage() {
   const [selectedPredicate, setSelectedPredicate] = useState<string>('');
   const [blinkMode, setBlinkMode] = useState<'single' | 'double'>('single');
   const [isDesktop, setIsDesktop] = useState(false);
-  const [hoverProgress, setHoverProgress] = useState<Record<string, number>>({});
   const [currentPage, setCurrentPage] = useState(0);
   const [isMounted, setIsMounted] = useState(false);
   const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
@@ -24,9 +23,13 @@ export default function MainPage() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isQuestionMode, setIsQuestionMode] = useState<boolean>(false);
 
-  const hoverTimerRef = useRef<Record<string, NodeJS.Timeout | null>>({});
+  // 현재 선택된 버튼 인덱스 (zone 기반 선택)
+  const [selectedButtonIndex, setSelectedButtonIndex] = useState(0);
+
   const buttonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
-  const handleSelectionRef = useRef<((buttonId: string) => void) | null>(null);
+
+  // Saccade 처리 중 플래그
+  const isProcessingSaccadeRef = useRef(false);
 
   // 클라이언트 마운트 및 화면 크기 감지 통합
   useEffect(() => {
@@ -83,157 +86,87 @@ export default function MainPage() {
     setSelectedCategory('');
     setSelectedSubject('');
     setSelectedPredicate('');
-    setHoverProgress({});
     setCurrentPage(0);
     setFinalSentence('');
     setIsGenerating(false);
     setIsQuestionMode(false);
+    setSelectedButtonIndex(0); // 첫 번째 버튼으로 리셋
   }, []);
 
-  // 선택 처리
-  useEffect(() => {
-    handleSelectionRef.current = (buttonId: string) => {
-      if (buttonId === 'next_page') {
-        const allOptions = getAllOptions();
-        const nextPageStart = (currentPage + 1) * 4;
+  // 선택 처리 함수
+  const handleSelection = useCallback((buttonId: string) => {
+    if (buttonId === 'next_page') {
+      const allOptions = getAllOptions();
+      const nextPageStart = (currentPage + 1) * 4;
+      setCurrentPage(nextPageStart >= allOptions.length ? 0 : currentPage + 1);
+      return;
+    }
 
-        if (nextPageStart >= allOptions.length) {
-          setCurrentPage(0);
+    switch (currentStep) {
+      case 'category':
+        setSelectedCategory(buttonId);
+        setCurrentStep('subject');
+        setCurrentPage(0);
+        setSelectedButtonIndex(0); // 첫 번째 버튼으로 리셋
+        break;
+
+      case 'subject':
+        if (buttonId === 'question_mode') {
+          setIsQuestionMode(true);
+          setCurrentStep('predicate');
         } else {
-          setCurrentPage(prev => prev + 1);
+          setSelectedSubject(buttonId);
+          setCurrentStep('predicate');
         }
-        setHoverProgress({});
-        return;
-      }
+        setCurrentPage(0);
+        setSelectedButtonIndex(0); // 첫 번째 버튼으로 리셋
+        break;
 
-      switch (currentStep) {
-        case 'category':
-          setSelectedCategory(buttonId);
-          setCurrentStep('subject');
-          setHoverProgress({});
-          setCurrentPage(0);
-          break;
-        case 'subject':
-          // 질문 버튼 처리
-          if (buttonId === 'question_mode') {
-            setIsQuestionMode(true);
-            // 주어를 선택하지 않고 바로 서술어 단계로
-            setCurrentStep('predicate');
-            setHoverProgress({});
-            setCurrentPage(0);
-          } else {
-            setSelectedSubject(buttonId);
-            setCurrentStep('predicate');
-            setHoverProgress({});
-            setCurrentPage(0);
-          }
-          break;
-        case 'predicate':
-          setSelectedPredicate(buttonId);
-          setHoverProgress({});
+      case 'predicate':
+        // GPT API를 통해 문장 개선
+        const subjectLabel = subjects.find(s => s.id === selectedSubject)?.label || '';
+        const predicateLabel = predicates[selectedCategory]?.find(p => p.id === buttonId)?.label || '';
+        let originalSentence = buildSentence(selectedSubject, buttonId, selectedCategory);
 
-          // GPT API를 통해 문장 개선
-          const subjectLabel = subjects.find(s => s.id === selectedSubject)?.label || '';
-          const predicateLabel = predicates[selectedCategory]?.find(p => p.id === buttonId)?.label || '';
-          let originalSentence = buildSentence(selectedSubject, buttonId, selectedCategory);
+        if (isQuestionMode) {
+          originalSentence = originalSentence + '?';
+        }
 
-          // 질문 모드일 경우 물음표 추가
-          if (isQuestionMode) {
-            originalSentence = originalSentence + '?';
-          }
+        // 즉시 원본 문장 표시
+        setFinalSentence(originalSentence);
+        setIsGenerating(true);
+        setSelectedPredicate(buttonId);
 
-          // 즉시 원본 문장을 표시하고 생성 중 상태로 변경
-          setFinalSentence(originalSentence);
-          setIsGenerating(true);
-
-          // GPT API 호출 (비동기로 처리)
-          getEnhancedSentence(subjectLabel, predicateLabel, selectedCategory, originalSentence, isQuestionMode)
-            .then((enhanced) => {
-              console.log('✅ GPT 응답 수신:', enhanced);
-              setFinalSentence(enhanced);
-              setIsGenerating(false);
-
-              // GPT 응답 후 3초 대기 후 초기화
-              setTimeout(() => {
-                resetSelection();
-              }, 3000);
-            })
-            .catch((error) => {
-              console.error('❌ GPT 문장 생성 실패:', error);
-              setIsGenerating(false);
-
-              // 실패해도 3초 후 초기화
-              setTimeout(() => {
-                resetSelection();
-              }, 3000);
-            });
-          break;
-      }
-    };
+        // GPT API 호출
+        getEnhancedSentence(subjectLabel, predicateLabel, selectedCategory, originalSentence, isQuestionMode)
+          .then((enhanced) => {
+            setFinalSentence(enhanced);
+            setIsGenerating(false);
+            setTimeout(resetSelection, 3000);
+          })
+          .catch((error) => {
+            console.error('GPT 문장 생성 실패:', error);
+            setIsGenerating(false);
+            setTimeout(resetSelection, 3000);
+          });
+        break;
+    }
   }, [currentStep, currentPage, getAllOptions, resetSelection, selectedCategory, selectedSubject, isQuestionMode]);
 
-  // 버튼 호버 시작
-  const handleButtonHoverStart = useCallback((buttonId: string) => {
-    if (hoverTimerRef.current[buttonId]) {
-      clearInterval(hoverTimerRef.current[buttonId]!);
+  // Zone 기반 버튼 이동 핸들러
+  const handleZoneChange = useCallback((direction: 'left' | 'right') => {
+    // 이미 처리 중이면 무시
+    if (isProcessingSaccadeRef.current) {
+      console.log(`[MainPage] Ignoring duplicate saccade (already processing)`);
+      return;
     }
 
-    hoverTimerRef.current[buttonId] = setInterval(() => {
-      setHoverProgress((prev) => {
-        const currentProgress = prev[buttonId] || 0;
-        const newProgress = Math.min(currentProgress + 1.6, 100);
+    isProcessingSaccadeRef.current = true;
+    console.log(`[MainPage] Saccade detected: ${direction}, Time: ${new Date().toISOString()}`);
 
-        if (newProgress >= 100 && currentProgress < 100) {
-          if (handleSelectionRef.current) {
-            handleSelectionRef.current(buttonId);
-          }
-        }
-
-        return { ...prev, [buttonId]: newProgress };
-      });
-    }, 16);
-  }, []);
-
-  // 버튼 호버 종료
-  const handleButtonHoverEnd = useCallback((buttonId: string) => {
-    if (hoverTimerRef.current[buttonId]) {
-      clearInterval(hoverTimerRef.current[buttonId]!);
-      hoverTimerRef.current[buttonId] = null;
-    }
-
-    const fadeTimer = setInterval(() => {
-      setHoverProgress((prev) => {
-        const currentProgress = prev[buttonId] || 0;
-        const newProgress = Math.max(currentProgress - 6.4, 0);
-
-        if (newProgress <= 0) {
-          clearInterval(fadeTimer);
-        }
-
-        return { ...prev, [buttonId]: newProgress };
-      });
-    }, 16);
-  }, []);
-
-  // 시선 추적으로 버튼 감지
-  useEffect(() => {
-    if (!isMounted) return;
-
-    let lastHoveredButton: string | null = null;
-
-    const checkCursorOverButtons = () => {
-      const gazeCursor = document.getElementById('gaze-tracking-cursor');
-      if (!gazeCursor) return;
-
-      const style = window.getComputedStyle(gazeCursor);
-      if (style.display === 'none' || style.visibility === 'hidden') return;
-
-      const cursorRect = gazeCursor.getBoundingClientRect();
-      const cursorX = cursorRect.left + cursorRect.width / 2;
-      const cursorY = cursorRect.top + cursorRect.height / 2;
-
+    setSelectedButtonIndex((prev) => {
       const currentOptions = getCurrentPageOptions();
-      let allButtons;
+      let allButtons: WordOption[];
 
       // 주어 선택 단계에서는 질문 버튼도 추가
       if (currentStep === 'subject') {
@@ -244,46 +177,28 @@ export default function MainPage() {
           : currentOptions;
       }
 
-      let anyButtonHovered = false;
-
-      allButtons.forEach((option) => {
-        const button = buttonRefs.current[option.id];
-        if (!button) return;
-
-        const rect = button.getBoundingClientRect();
-        const isOver =
-          cursorX >= rect.left &&
-          cursorX <= rect.right &&
-          cursorY >= rect.top &&
-          cursorY <= rect.bottom;
-
-        if (isOver) {
-          anyButtonHovered = true;
-          if (lastHoveredButton !== option.id) {
-            if (lastHoveredButton) {
-              handleButtonHoverEnd(lastHoveredButton);
-            }
-            handleButtonHoverStart(option.id);
-            lastHoveredButton = option.id;
-          }
-        }
-      });
-
-      if (!anyButtonHovered && lastHoveredButton) {
-        handleButtonHoverEnd(lastHoveredButton);
-        lastHoveredButton = null;
+      if (allButtons.length === 0) {
+        isProcessingSaccadeRef.current = false;
+        return prev;
       }
-    };
 
-    const intervalId = setInterval(checkCursorOverButtons, 16);
+      let nextIndex;
+      if (direction === 'right') {
+        nextIndex = (prev + 1) % allButtons.length;
+        console.log(`[MainPage] Moving right: ${prev} → ${nextIndex} (of ${allButtons.length} buttons)`);
+      } else {
+        nextIndex = prev === 0 ? allButtons.length - 1 : prev - 1;
+        console.log(`[MainPage] Moving left: ${prev} → ${nextIndex} (of ${allButtons.length} buttons)`);
+      }
 
-    return () => {
-      clearInterval(intervalId);
-      Object.values(hoverTimerRef.current).forEach((timer) => {
-        if (timer) clearInterval(timer);
-      });
-    };
-  }, [currentStep, isMounted, getCurrentPageOptions, handleButtonHoverStart, handleButtonHoverEnd, showNextButton]);
+      // 300ms 후에 플래그 리셋
+      setTimeout(() => {
+        isProcessingSaccadeRef.current = false;
+      }, 300);
+
+      return nextIndex;
+    });
+  }, [getCurrentPageOptions, currentStep, showNextButton]);
 
   // 실시간 문장 생성
   const currentSentence = useMemo(() => {
@@ -357,6 +272,15 @@ export default function MainPage() {
     // 예: setShowEmoticonPanel(true);
   }, []);
 
+  // IrisTracker 핸들러를 Context에 등록
+  const irisHandlers = useMemo(() => ({
+    onLongBlink: handleLongBlink,
+    onDoubleBlink: handleDoubleBlink,
+    onZoneChange: handleZoneChange,
+  }), [handleLongBlink, handleDoubleBlink, handleZoneChange]);
+
+  useRegisterIrisHandlers(irisHandlers);
+
   // 🔥 Hook 순서 위반 방지: 모든 Hook 호출 후에 조건부 렌더링
   if (!isMounted) {
     return null;
@@ -364,14 +288,8 @@ export default function MainPage() {
 
   return (
     <>
-      <IrisTracker
-        onLongBlink={handleLongBlink}
-        onDoubleBlink={handleDoubleBlink}
-      />
       <AALayout
         title={currentStep === 'category' ? '상황 선택' : currentStep === 'subject' ? '주어 선택' : '서술어 선택'}
-        blinkMode={blinkMode}
-        onBlinkModeChange={setBlinkMode}
         outputText={currentSentence}
         isDesktop={isDesktop}
         onBack={resetSelection}
@@ -380,7 +298,7 @@ export default function MainPage() {
           className="absolute flex"
           style={buttonContainerStyle}
         >
-          {getCurrentPageOptions().map((option) => (
+          {getCurrentPageOptions().map((option, index) => (
             <SelectionButton
               key={option.id}
               ref={(el) => {
@@ -388,16 +306,11 @@ export default function MainPage() {
               }}
               id={option.id}
               label={option.label}
-              progress={hoverProgress[option.id] || 0}
+              progress={0}
               isDesktop={isDesktop}
               customWidth={buttonContainerStyle.buttonWidth}
-              onClick={() => {
-                if (handleSelectionRef.current) {
-                  handleSelectionRef.current(option.id);
-                }
-              }}
-              onMouseEnter={() => handleButtonHoverStart(option.id)}
-              onMouseLeave={() => handleButtonHoverEnd(option.id)}
+              isSelected={index === selectedButtonIndex}
+              onClick={() => handleSelection(option.id)}
             />
           ))}
 
@@ -408,17 +321,12 @@ export default function MainPage() {
               }}
               id="question_mode"
               label="질문"
-              progress={hoverProgress.question_mode || 0}
+              progress={0}
               isDesktop={isDesktop}
               customWidth={buttonContainerStyle.buttonWidth}
-              isNextButton={true}
-              onClick={() => {
-                if (handleSelectionRef.current) {
-                  handleSelectionRef.current('question_mode');
-                }
-              }}
-              onMouseEnter={() => handleButtonHoverStart('question_mode')}
-              onMouseLeave={() => handleButtonHoverEnd('question_mode')}
+              isNextButton={false}
+              isSelected={selectedButtonIndex === getCurrentPageOptions().length}
+              onClick={() => handleSelection('question_mode')}
             />
           )}
 
@@ -429,17 +337,12 @@ export default function MainPage() {
               }}
               id="next_page"
               label="다시"
-              progress={hoverProgress.next_page || 0}
+              progress={0}
               isDesktop={isDesktop}
               customWidth={buttonContainerStyle.buttonWidth}
               isNextButton={true}
-              onClick={() => {
-                if (handleSelectionRef.current) {
-                  handleSelectionRef.current('next_page');
-                }
-              }}
-              onMouseEnter={() => handleButtonHoverStart('next_page')}
-              onMouseLeave={() => handleButtonHoverEnd('next_page')}
+              isSelected={selectedButtonIndex === getCurrentPageOptions().length}
+              onClick={() => handleSelection('next_page')}
             />
           )}
         </div>

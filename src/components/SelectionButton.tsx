@@ -2,7 +2,7 @@
 
 import React, { forwardRef } from 'react';
 
-interface SelectionButtonProps {
+export interface SelectionButtonProps {
   id: string;
   label: string;
   progress: number;
@@ -12,45 +12,33 @@ interface SelectionButtonProps {
   isDesktop?: boolean;
   customWidth?: number;
   isNextButton?: boolean;
+  isSelected?: boolean;
 }
 
 const SelectionButton = forwardRef<HTMLButtonElement, SelectionButtonProps>(
-  ({ id, label, progress, onClick, onMouseEnter, onMouseLeave, isDesktop = false, customWidth, isNextButton = false }, ref) => {
+  ({ id, label, onClick, onMouseEnter, onMouseLeave, isDesktop = false, customWidth, isNextButton = false, isSelected = false }, ref) => {
+
     // customWidth가 있으면 사용, 없으면 기본값 사용
     const buttonWidth = customWidth ? `${customWidth}px` : (isDesktop ? '480px' : '320px');
-    const buttonHeight = isDesktop ? '380px' : '360px';  // 높이 감소
+    const buttonHeight = isDesktop ? '380px' : '360px';
     const fontSize = isDesktop ? '85px' : '65px';
     const lineHeight = isDesktop ? '100px' : '78px';
 
+    // 선택 상태에 따른 스타일
     const getButtonStyle = () => {
-      // "다시" 또는 "질문" 버튼일 경우 보라색 테마 적용
-      if (isNextButton) {
-        if (progress > 0) {
-          const opacity = progress / 100;
-          return {
-            backgroundColor: `rgba(147, 51, 234, ${opacity})`, // 보라색 (purple-600)
-            color: progress > 50 ? '#FFFFFF' : '#9333EA',
-          };
-        }
+      if (isSelected) {
         return {
-          backgroundColor: 'transparent',
-          color: '#9333EA', // 보라색
-        };
-      }
-
-      // 기본 버튼 (노란색 테마)
-      if (progress > 0) {
-        const opacity = progress / 100;
-        return {
-          backgroundColor: `rgba(255, 222, 76, ${opacity})`,
-          color: progress > 50 ? '#15171A' : '#FFDE4C',
+          backgroundColor: 'rgba(254, 100, 51, 0.63)',
+          borderColor: '#FE6433',
         };
       }
       return {
-        backgroundColor: 'transparent',
-        color: '#FFDE4C',
+        backgroundColor: 'white',
+        borderColor: '#D9E4E8',
       };
     };
+
+    const buttonStyle = getButtonStyle();
 
     return (
       <button
@@ -59,24 +47,38 @@ const SelectionButton = forwardRef<HTMLButtonElement, SelectionButtonProps>(
         onClick={onClick}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
-        className="flex items-center justify-center rounded-[30px] transition-colors duration-100"
+        className="flex flex-row justify-center items-center rounded-[30px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] backdrop-blur-[15px] transition-all duration-200"
         style={{
           width: buttonWidth,
           height: buttonHeight,
           padding: '30px 50px',
-          border: isNextButton ? '3px solid #9333EA' : '3px solid #FFDE4C',
-          ...getButtonStyle(),
+          backgroundColor: buttonStyle.backgroundColor,
+          border: `6px solid ${buttonStyle.borderColor}`,
+          transform: isSelected ? 'scale(1.05)' : 'scale(1)',
         }}
       >
-        <span
-          className="font-pretendard font-semibold"
-          style={{
-            fontSize: fontSize,
-            lineHeight: lineHeight,
-          }}
-        >
-          {label}
-        </span>
+        {isNextButton ? (
+          // 다시 버튼 (화살표 아이콘)
+          <div className="flex items-center justify-center" style={{ width: '136px', height: '136px' }}>
+            <svg width="136" height="136" viewBox="0 0 136 136" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M85 45.3333L45.3333 85M45.3333 85L45.3333 51.6667M45.3333 85L78.6667 85"
+                    stroke="black"
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"/>
+            </svg>
+          </div>
+        ) : (
+          // 일반 버튼 (텍스트)
+          <span className="font-['NanumSquareRound'] font-bold text-black"
+                style={{
+                  fontSize: fontSize,
+                  lineHeight: lineHeight,
+                  letterSpacing: '0.01em'
+                }}>
+            {label}
+          </span>
+        )}
       </button>
     );
   }

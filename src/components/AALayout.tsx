@@ -6,8 +6,6 @@ interface AALayoutProps {
   children: React.ReactNode;
   title?: string;
   onBack?: () => void;
-  blinkMode: 'single' | 'double';
-  onBlinkModeChange: (mode: 'single' | 'double') => void;
   outputText?: string;
   isDesktop?: boolean;
 }
@@ -17,14 +15,12 @@ const STYLES = {
   desktop: {
     backButtonWidth: '180px',
     titleFontSize: '32px',
-    modeFontSize: '32px',
     outputHeight: '110px',
     outputFontSize: '36px',
   },
   mobile: {
     backButtonWidth: '150px',
     titleFontSize: '28px',
-    modeFontSize: '28px',
     outputHeight: '90px',
     outputFontSize: '32px',
   },
@@ -39,8 +35,6 @@ export default function AALayout({
   children,
   title = '상황 선택',
   onBack,
-  blinkMode,
-  onBlinkModeChange,
   outputText = '',
   isDesktop = false,
 }: AALayoutProps) {
@@ -48,44 +42,40 @@ export default function AALayout({
   const { buttonHeight, buttonFontSize, sideButtonWidth } = STYLES.common;
 
   return (
-    <div className="relative w-screen h-screen bg-[#15171A] overflow-hidden">
+    <div className="relative w-screen h-screen bg-[#EDF8FC] overflow-hidden">
+      {/* 배경 장식 */}
+      <div className="absolute inset-0 opacity-10 pointer-events-none">
+        <div className="absolute w-[400px] h-[400px] left-[10%] top-[15%] bg-[#C6EEFF] rounded-full blur-3xl" />
+        <div className="absolute w-[300px] h-[300px] right-[15%] top-[20%] bg-[#C6EEFF] rounded-full blur-3xl" />
+        <div className="absolute w-[350px] h-[350px] left-[20%] bottom-[10%] bg-[#F2FBFF] rounded-full blur-3xl" />
+      </div>
+
       {/* 상단 영역 */}
-      <div className="absolute left-[56px] right-[56px] top-[40px]">
+      <div className="absolute left-[56px] right-[56px] top-[40px] z-10">
         <div className="flex items-start justify-between">
-          {/* 좌측: 뒤로가기 + 깜--빡 */}
+          {/* 좌측: 뒤로가기 */}
           <div className="flex flex-col gap-2">
             <button
               onClick={onBack}
-              className="flex items-center justify-center"
+              className="flex items-center justify-center bg-[#5A5A5A] rounded-[100px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] transition-all hover:bg-[#6A6A6A]"
               style={{
                 width: style.backButtonWidth,
                 height: buttonHeight,
                 padding: '15px 25px',
-                border: '2px solid #4AC1F8',
-                borderRadius: '8px',
               }}
             >
               <span
-                className="font-pretendard font-semibold text-[#4AC1F8]"
+                className="font-['NanumSquareRound'] font-bold text-white"
                 style={{ fontSize: buttonFontSize, lineHeight: '30px' }}
               >
                 뒤로가기
               </span>
             </button>
-            <button
-              onClick={() => onBlinkModeChange('single')}
-              className={`font-pretendard font-semibold transition-colors text-center ${
-                blinkMode === 'single' ? 'text-white' : 'text-[#656565]'
-              }`}
-              style={{ fontSize: style.modeFontSize, lineHeight: style.modeFontSize }}
-            >
-              깜--빡
-            </button>
           </div>
 
           {/* 중앙: 제목 */}
           <h1
-            className="font-pretendard font-semibold text-white"
+            className="font-['NanumSquareRound'] font-bold text-black"
             style={{
               fontSize: style.titleFontSize,
               lineHeight: style.titleFontSize,
@@ -95,11 +85,11 @@ export default function AALayout({
             {title}
           </h1>
 
-          {/* 우측: 이모티콘/문장 + 깜빡깜빡 */}
+          {/* 우측: 이모티콘/문장 */}
           <div className="flex flex-col gap-2">
             <div className="flex gap-2">
               <button
-                className="flex items-center justify-center bg-[#4AC1F8] rounded-lg"
+                className="flex items-center justify-center bg-[#FE6433] rounded-[100px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] transition-all hover:bg-[#FF7544]"
                 style={{
                   width: sideButtonWidth,
                   height: buttonHeight,
@@ -107,38 +97,29 @@ export default function AALayout({
                 }}
               >
                 <span
-                  className="font-pretendard font-semibold text-[#15171A]"
+                  className="font-['NanumSquareRound'] font-bold text-white"
                   style={{ fontSize: buttonFontSize, lineHeight: '30px' }}
                 >
                   이모티콘
                 </span>
               </button>
               <button
-                className="flex items-center justify-center rounded-lg"
+                className="flex items-center justify-center bg-white rounded-[100px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] transition-all hover:bg-gray-50"
                 style={{
                   width: sideButtonWidth,
                   height: buttonHeight,
                   padding: '15px 20px',
-                  border: '2px solid #4AC1F8',
+                  border: '2px solid #D9E4E8',
                 }}
               >
                 <span
-                  className="font-pretendard font-semibold text-[#4AC1F8]"
+                  className="font-['NanumSquareRound'] font-bold text-black"
                   style={{ fontSize: buttonFontSize, lineHeight: '30px' }}
                 >
                   문장
                 </span>
               </button>
             </div>
-            <button
-              onClick={() => onBlinkModeChange('double')}
-              className={`font-pretendard font-semibold transition-colors text-center ${
-                blinkMode === 'double' ? 'text-white' : 'text-[#656565]'
-              }`}
-              style={{ fontSize: style.modeFontSize, lineHeight: style.modeFontSize }}
-            >
-              깜빡깜빡
-            </button>
           </div>
         </div>
       </div>
@@ -148,22 +129,20 @@ export default function AALayout({
 
       {/* 하단 텍스트 출력 영역 */}
       <div
-        className="absolute flex items-center justify-center rounded-lg"
+        className="absolute flex items-center justify-center rounded-[30px] bg-white shadow-[0px_5px_10px_rgba(0,0,0,0.15)] backdrop-blur-[15px]"
         style={{
           left: '56px',
           bottom: '50px',
           right: '56px',
           height: style.outputHeight,
           padding: '30px 34px',
-          background: 'rgba(255, 255, 255, 0.04)',
-          border: '2px solid #FFFFFF',
         }}
       >
         <span
-          className="font-pretendard font-semibold text-white"
+          className="font-['NanumBarunpen'] font-bold text-black"
           style={{ fontSize: style.outputFontSize, lineHeight: style.outputFontSize }}
         >
-          {outputText}
+          {outputText || '문장이 여기에 표시됩니다'}
         </span>
       </div>
     </div>

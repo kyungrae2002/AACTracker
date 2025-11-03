@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
-// OpenAI 인스턴스 생성
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// API Route를 dynamic으로 설정하여 빌드 시 실행 방지
+export const dynamic = 'force-dynamic';
+
+// OpenAI 인스턴스 생성 (lazy initialization)
+let openai: OpenAI | null = null;
+
+const getOpenAI = () => {
+  if (!openai && process.env.OPENAI_API_KEY) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openai;
+};
 
 // 프롬프트 템플릿
 const PROMPT_TEMPLATES = {
@@ -102,7 +112,15 @@ export async function POST(request: NextRequest) {
       : PROMPT_TEMPLATES.base(subject, predicate, category, originalSentence);
 
     // OpenAI API 호출
-    const response = await openai.chat.completions.create({
+    const client = getOpenAI();
+    if (!client) {
+      return NextResponse.json(
+        { error: 'OpenAI API key not configured', sentence: originalSentence },
+        { status: 200 }
+      );
+    }
+
+    const response = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: SYSTEM_MESSAGE },

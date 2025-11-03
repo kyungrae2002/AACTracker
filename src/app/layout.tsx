@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import ClientLayout from "@/components/ClientLayout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko">
+    <html lang="ko" suppressHydrationWarning>
       <head>
         <link
           rel="stylesheet"
@@ -35,8 +36,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         style={{ fontFamily: 'Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif' }}
+        suppressHydrationWarning
       >
-        {children}
+        <ClientLayout>
+          {children}
+        </ClientLayout>
       </body>
     </html>
   );
