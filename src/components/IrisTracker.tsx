@@ -49,7 +49,12 @@ declare global {
   }
 }
 
-const IrisTracker: React.FC = () => {
+interface IrisTrackerProps {
+  onLongBlink?: () => void;
+  onDoubleBlink?: () => void;
+}
+
+const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gazeCursorRef = useRef<HTMLDivElement>(null);
@@ -69,11 +74,23 @@ const IrisTracker: React.FC = () => {
   const frameSkipCountRef = useRef(0);
   const lastValidPositionRef = useRef<Position | null>(null);
 
+  // 눈 깜빡임 감지 관련 상태
+  const isBlinkingRef = useRef(false);
+  const blinkStartTimeRef = useRef<number | null>(null);
+  const lastBlinkTimesRef = useRef<number[]>([]);
+
   const SMOOTHING_FACTOR = 0.22; // 0.15 → 0.22 (반응성 개선, 여전히 부드러움 유지)
   const SENSITIVITY_X = 3.0;
   const SENSITIVITY_Y = 4.0;
   const FRAME_SKIP = 2; // 2프레임마다 1번만 처리 (성능 최적화)
   const MAX_POSITION_CHANGE = 70; // 50 → 70 (더 빠른 이동 허용)
+
+  // 눈 깜빡임 감지 상수
+  const EAR_THRESHOLD = 0.21; // 눈을 감은 것으로 판단하는 EAR 임계값
+  const LONG_BLINK_DURATION = 400; // 긴 깜빡임으로 판단하는 최소 지속 시간 (ms)
+  const MAX_BLINK_DURATION = 2000; // 최대 깜빡임 지속 시간 (ms) - 이보다 길면 무시
+  const DOUBLE_BLINK_WINDOW = 1000; // 짧은 깜빡임이 여러 번 발생했는지 확인하는 시간 창 (ms)
+  const DOUBLE_BLINK_COUNT = 2; // "깜빡깜빡"으로 인식하는 최소 깜빡임 횟수
 
   // 프로덕션 환경 체크
   useEffect(() => {
@@ -163,6 +180,90 @@ const IrisTracker: React.FC = () => {
       animationFrameRef.current = requestAnimationFrame(processVideoFrame);
     }
   }, [isTracking]);
+
+  // EAR (Eye Aspect Ratio) 계산 - 눈의 개폐 정도 측정
+  const calculateEAR = useCallback((landmarks: Landmark[], eyeIndices: number[]): number => {
+    // eyeIndices: [outer, top1, top2, inner, bottom2, bottom1]
+    // 세로 길이 2개 계산
+    const vertical1 = Math.sqrt(
+      Math.pow(landmarks[eyeIndices[1]].x - landmarks[eyeIndices[5]].x, 2) +
+      Math.pow(landmarks[eyeIndices[1]].y - landmarks[eyeIndices[5]].y, 2)
+    );
+    const vertical2 = Math.sqrt(
+      Math.pow(landmarks[eyeIndices[2]].x - landmarks[eyeIndices[4]].x, 2) +
+      Math.pow(landmarks[eyeIndices[2]].y - landmarks[eyeIndices[4]].y, 2)
+    );
+    // 가로 길이 계산
+    const horizontal = Math.sqrt(
+      Math.pow(landmarks[eyeIndices[0]].x - landmarks[eyeIndices[3]].x, 2) +
+      Math.pow(landmarks[eyeIndices[0]].y - landmarks[eyeIndices[3]].y, 2)
+    );
+
+    // EAR = (세로1 + 세로2) / (2 * 가로)
+    return (vertical1 + vertical2) / (2.0 * horizontal);
+  }, []);
+
+  // 눈 깜빡임 감지 및 처리
+  const detectBlink = useCallback((landmarks: Landmark[]) => {
+    try {
+      // 왼쪽 눈과 오른쪽 눈의 EAR 계산
+      // 왼쪽 눈: 33(outer), 160(top), 159(top), 133(inner), 145(bottom), 144(bottom)
+      const leftEAR = calculateEAR(landmarks, [33, 160, 159, 133, 145, 144]);
+      // 오른쪽 눈: 263(outer), 387(top), 386(top), 362(inner), 374(bottom), 373(bottom)
+      const rightEAR = calculateEAR(landmarks, [263, 387, 386, 362, 374, 373]);
+
+      // 양쪽 눈의 평균 EAR
+      const avgEAR = (leftEAR + rightEAR) / 2;
+
+      const currentTime = Date.now();
+
+      // 눈을 감은 상태 (EAR이 임계값 이하)
+      if (avgEAR < EAR_THRESHOLD) {
+        if (!isBlinkingRef.current) {
+          // 깜빡임 시작
+          isBlinkingRef.current = true;
+          blinkStartTimeRef.current = currentTime;
+        }
+      } else {
+        // 눈을 뜬 상태
+        if (isBlinkingRef.current && blinkStartTimeRef.current) {
+          // 깜빡임 종료
+          const blinkDuration = currentTime - blinkStartTimeRef.current;
+
+          // 유효한 깜빡임인지 확인 (너무 길지 않은지)
+          if (blinkDuration < MAX_BLINK_DURATION) {
+            if (blinkDuration >= LONG_BLINK_DURATION) {
+              // 긴 깜빡임 감지 - 뒤로가기
+              console.log('긴 깜빡임 감지:', blinkDuration, 'ms');
+              onLongBlink?.();
+            } else {
+              // 짧은 깜빡임 감지
+              console.log('짧은 깜빡임 감지:', blinkDuration, 'ms');
+              lastBlinkTimesRef.current.push(currentTime);
+
+              // 오래된 깜빡임 기록 제거 (DOUBLE_BLINK_WINDOW 이전 것들)
+              lastBlinkTimesRef.current = lastBlinkTimesRef.current.filter(
+                time => currentTime - time < DOUBLE_BLINK_WINDOW
+              );
+
+              // 짧은 깜빡임이 여러 번 발생했는지 확인
+              if (lastBlinkTimesRef.current.length >= DOUBLE_BLINK_COUNT) {
+                console.log('깜빡깜빡 감지:', lastBlinkTimesRef.current.length, '회');
+                onDoubleBlink?.();
+                // 기록 초기화
+                lastBlinkTimesRef.current = [];
+              }
+            }
+          }
+
+          isBlinkingRef.current = false;
+          blinkStartTimeRef.current = null;
+        }
+      }
+    } catch (error) {
+      console.error('눈 깜빡임 감지 오류:', error);
+    }
+  }, [calculateEAR, onLongBlink, onDoubleBlink, EAR_THRESHOLD, LONG_BLINK_DURATION, MAX_BLINK_DURATION, DOUBLE_BLINK_WINDOW, DOUBLE_BLINK_COUNT]);
 
   // Iris 중심점 계산
   const getIrisCenter = (landmarks: Landmark[], irisIndices: number[]): Position | null => {
@@ -259,6 +360,9 @@ const IrisTracker: React.FC = () => {
   // Iris 기반 시선 추적 계산
   const calculateIrisGaze = (landmarks: Landmark[]) => {
     try {
+      // 눈 깜빡임 감지
+      detectBlink(landmarks);
+
       const leftIrisCenter = getIrisCenter(landmarks, [468, 469, 470, 471, 472]);
       const rightIrisCenter = getIrisCenter(landmarks, [473, 474, 475, 476, 477]);
 
