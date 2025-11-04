@@ -26,10 +26,6 @@ const IrisTrackerWrapper: React.FC = () => {
         console.log('🎯 ClientLayout: onZoneChange triggered:', direction);
         handlersRef.current.onZoneChange?.(direction);
       }}
-      onCenterGaze={() => {
-        console.log('🎯 ClientLayout: onCenterGaze triggered');
-        handlersRef.current.onCenterGaze?.();
-      }}
     />
   );
 };

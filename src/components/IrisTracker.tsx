@@ -53,10 +53,9 @@ interface IrisTrackerProps {
   onLongBlink?: () => void;
   onDoubleBlink?: () => void;
   onZoneChange?: (direction: 'left' | 'right') => void;
-  onCenterGaze?: () => void;
 }
 
-const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, onZoneChange, onCenterGaze }) => {
+const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, onZoneChange }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gazeCursorRef = useRef<HTMLDivElement>(null);
@@ -85,11 +84,6 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
   const currentZoneRef = useRef<'left' | 'center' | 'right'>('center');
   const lastZoneChangeRef = useRef<number>(0);
   const ZONE_CHANGE_COOLDOWN = 1000; // 1초 쿨다운
-
-  // 중앙 응시 감지를 위한 refs
-  const centerGazeStartTimeRef = useRef<number | null>(null);
-  const isCenterGazeActiveRef = useRef(false);
-  const CENTER_GAZE_DURATION = 2000; // 2초 동안 중앙 응시
 
   const SMOOTHING_FACTOR = 0.22; // 0.15 → 0.22 (반응성 개선, 여전히 부드러움 유지)
   const SENSITIVITY_X = 3.0;
@@ -354,36 +348,8 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
       }
     }
 
-    // 중앙 응시 감지 (2초 동안 중앙에 머물면 선택)
-    if (newZone === 'center') {
-      // 중앙에 있을 때
-      if (!isCenterGazeActiveRef.current) {
-        // 중앙 응시 시작
-        centerGazeStartTimeRef.current = now;
-        isCenterGazeActiveRef.current = true;
-        console.log('👁️ 중앙 응시 시작');
-      } else {
-        // 이미 중앙 응시 중
-        const gazeDuration = now - (centerGazeStartTimeRef.current || now);
-        if (gazeDuration >= CENTER_GAZE_DURATION && onCenterGaze) {
-          console.log('✅ 중앙 응시 완료 (2초) - 선택 실행');
-          onCenterGaze();
-          // 응시 상태 초기화 (중복 실행 방지)
-          centerGazeStartTimeRef.current = null;
-          isCenterGazeActiveRef.current = false;
-        }
-      }
-    } else {
-      // 중앙이 아닐 때 - 응시 상태 초기화
-      if (isCenterGazeActiveRef.current) {
-        console.log('👁️ 중앙 응시 중단');
-      }
-      centerGazeStartTimeRef.current = null;
-      isCenterGazeActiveRef.current = false;
-    }
-
     currentZoneRef.current = newZone;
-  }, [onZoneChange, onCenterGaze, ZONE_CHANGE_COOLDOWN, CENTER_GAZE_DURATION]);
+  }, [onZoneChange, ZONE_CHANGE_COOLDOWN]);
 
   // 커서 업데이트 (화면 하단 절반으로 제한 + 강화된 스무딩)
   const updateGazeCursor = (position: Position) => {
@@ -577,36 +543,34 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
       // HTTPS 체크
       if (typeof window !== 'undefined') {
         const isHttps = window.location.protocol === 'https:';
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const isLocalhost = window.location.hostname === 'localhost' ||
+                           window.location.hostname === '127.0.0.1';
 
         if (!isHttps && !isLocalhost) {
           throw new Error('HTTPS 연결이 필요합니다. 보안 연결(https://)로 접속해주세요.');
         }
       }
 
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(device => device.kind === 'videoinput');
-
-      if (videoDevices.length === 0) {
-        throw new Error('카메라를 찾을 수 없습니다.');
-      }
-
       // 여러 constraint 시도
       const constraintsList = [
         { video: { width: 640, height: 480, facingMode: 'user' } },
         { video: { width: 640, height: 480 } },
-        { video: true },
-        { video: { deviceId: videoDevices[0].deviceId } }
+        { video: true }
       ];
 
       let stream = null;
       let lastError = null;
 
-      for (const constraints of constraintsList) {
+      console.log('🎥 카메라 시작 시도...');
+
+      for (let i = 0; i < constraintsList.length; i++) {
         try {
-          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          console.log(`${i + 1}차 시도:`, constraintsList[i]);
+          stream = await navigator.mediaDevices.getUserMedia(constraintsList[i]);
+          console.log(`✅ ${i + 1}차 시도 성공!`);
           break;
         } catch (error) {
+          console.log(`❌ ${i + 1}차 시도 실패:`, error);
           lastError = error;
         }
       }
@@ -615,12 +579,17 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
         const errorMessage = lastError instanceof Error ?
           (lastError.name === 'NotAllowedError' ?
             '카메라 권한이 거부되었습니다. 브라우저 설정에서 카메라 권한을 허용해주세요.' :
+            lastError.name === 'NotFoundError' ?
+            '카메라를 찾을 수 없습니다. 카메라가 연결되어 있는지 확인해주세요.' :
+            lastError.name === 'NotReadableError' ?
+            '카메라가 다른 앱에서 사용 중입니다. 다른 앱을 종료하고 다시 시도해주세요.' :
             '카메라를 시작할 수 없습니다.') :
           '카메라를 시작할 수 없습니다.';
         throw new Error(errorMessage);
       }
 
-      if (videoRef.current) {
+      // 스트림 연결
+      if (stream && videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
 
@@ -630,6 +599,7 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
               setIsTracking(true);
               setIsLoading(false);
               setError('');
+              console.log('✅ 카메라 시작 성공');
             })
             .catch((error) => {
               console.error('비디오 재생 실패:', error);

@@ -6,7 +6,6 @@ interface IrisTrackerHandlers {
   onLongBlink?: () => void;
   onDoubleBlink?: () => void;
   onZoneChange?: (direction: 'left' | 'right') => void;
-  onCenterGaze?: () => void;
 }
 
 interface IrisTrackerContextType {
@@ -59,5 +58,5 @@ export const useRegisterIrisHandlers = (handlers: IrisTrackerHandlers) => {
       registerHandlers({});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handlers.onLongBlink, handlers.onDoubleBlink, handlers.onZoneChange, handlers.onCenterGaze, registerHandlers]);
+  }, [handlers.onLongBlink, handlers.onDoubleBlink, handlers.onZoneChange, registerHandlers]);
 };

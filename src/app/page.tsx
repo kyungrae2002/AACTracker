@@ -259,21 +259,8 @@ export default function MainPage() {
     };
   }, [windowSize, getCurrentPageOptions, showNextButton, isDesktop, currentStep]);
 
-  // 긴 깜빡임 핸들러 (뒤로가기)
+  // 긴 깜빡임 핸들러 (현재 선택된 버튼 클릭)
   const handleLongBlink = useCallback(() => {
-    console.log('🔙 긴 깜빡임으로 뒤로가기 실행');
-    resetSelection();
-  }, [resetSelection]);
-
-  // 짧은 깜빡임 여러 번 핸들러 (이모티콘 - 나중에 구현)
-  const handleDoubleBlink = useCallback(() => {
-    console.log('😊 짧은 깜빡임 여러 번 감지 - 이모티콘 기능 (추후 구현 예정)');
-    // TODO: 이모티콘 기능 구현 시 여기에 코드 추가
-    // 예: setShowEmoticonPanel(true);
-  }, []);
-
-  // 중앙 응시 핸들러 (2초 동안 중앙 응시 시 선택된 버튼 클릭)
-  const handleCenterGaze = useCallback(() => {
     const currentOptions = getCurrentPageOptions();
     let allButtons: WordOption[];
 
@@ -293,18 +280,23 @@ export default function MainPage() {
 
     const selectedButton = allButtons[selectedButtonIndex];
     if (selectedButton) {
-      console.log(`✅ 중앙 응시로 버튼 선택: ${selectedButton.label} (ID: ${selectedButton.id})`);
+      console.log(`✅ 긴 깜빡임으로 버튼 선택: ${selectedButton.label} (ID: ${selectedButton.id})`);
       handleSelection(selectedButton.id);
     }
   }, [getCurrentPageOptions, currentStep, showNextButton, selectedButtonIndex, handleSelection]);
+
+  // 짧은 깜빡임 여러 번 핸들러 (뒤로가기)
+  const handleDoubleBlink = useCallback(() => {
+    console.log('🔙 짧은 깜빡임 여러 번으로 뒤로가기 실행');
+    resetSelection();
+  }, [resetSelection]);
 
   // IrisTracker 핸들러를 Context에 등록
   const irisHandlers = useMemo(() => ({
     onLongBlink: handleLongBlink,
     onDoubleBlink: handleDoubleBlink,
     onZoneChange: handleZoneChange,
-    onCenterGaze: handleCenterGaze,
-  }), [handleLongBlink, handleDoubleBlink, handleZoneChange, handleCenterGaze]);
+  }), [handleLongBlink, handleDoubleBlink, handleZoneChange]);
 
   useRegisterIrisHandlers(irisHandlers);
 
