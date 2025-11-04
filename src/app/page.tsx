@@ -272,12 +272,39 @@ export default function MainPage() {
     // 예: setShowEmoticonPanel(true);
   }, []);
 
+  // 중앙 응시 핸들러 (2초 동안 중앙 응시 시 선택된 버튼 클릭)
+  const handleCenterGaze = useCallback(() => {
+    const currentOptions = getCurrentPageOptions();
+    let allButtons: WordOption[];
+
+    // 주어 선택 단계에서는 질문 버튼도 추가
+    if (currentStep === 'subject') {
+      allButtons = [...currentOptions, { id: 'question_mode', label: '질문' }];
+    } else {
+      allButtons = showNextButton()
+        ? [...currentOptions, { id: 'next_page', label: '다시' }]
+        : currentOptions;
+    }
+
+    if (allButtons.length === 0) {
+      console.log('⚠️ 선택 가능한 버튼이 없습니다');
+      return;
+    }
+
+    const selectedButton = allButtons[selectedButtonIndex];
+    if (selectedButton) {
+      console.log(`✅ 중앙 응시로 버튼 선택: ${selectedButton.label} (ID: ${selectedButton.id})`);
+      handleSelection(selectedButton.id);
+    }
+  }, [getCurrentPageOptions, currentStep, showNextButton, selectedButtonIndex, handleSelection]);
+
   // IrisTracker 핸들러를 Context에 등록
   const irisHandlers = useMemo(() => ({
     onLongBlink: handleLongBlink,
     onDoubleBlink: handleDoubleBlink,
     onZoneChange: handleZoneChange,
-  }), [handleLongBlink, handleDoubleBlink, handleZoneChange]);
+    onCenterGaze: handleCenterGaze,
+  }), [handleLongBlink, handleDoubleBlink, handleZoneChange, handleCenterGaze]);
 
   useRegisterIrisHandlers(irisHandlers);
 

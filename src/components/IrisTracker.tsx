@@ -53,9 +53,10 @@ interface IrisTrackerProps {
   onLongBlink?: () => void;
   onDoubleBlink?: () => void;
   onZoneChange?: (direction: 'left' | 'right') => void;
+  onCenterGaze?: () => void;
 }
 
-const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, onZoneChange }) => {
+const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, onZoneChange, onCenterGaze }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gazeCursorRef = useRef<HTMLDivElement>(null);
@@ -84,6 +85,11 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
   const currentZoneRef = useRef<'left' | 'center' | 'right'>('center');
   const lastZoneChangeRef = useRef<number>(0);
   const ZONE_CHANGE_COOLDOWN = 1000; // 1초 쿨다운
+
+  // 중앙 응시 감지를 위한 refs
+  const centerGazeStartTimeRef = useRef<number | null>(null);
+  const isCenterGazeActiveRef = useRef(false);
+  const CENTER_GAZE_DURATION = 2000; // 2초 동안 중앙 응시
 
   const SMOOTHING_FACTOR = 0.22; // 0.15 → 0.22 (반응성 개선, 여전히 부드러움 유지)
   const SENSITIVITY_X = 3.0;
@@ -348,8 +354,36 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
       }
     }
 
+    // 중앙 응시 감지 (2초 동안 중앙에 머물면 선택)
+    if (newZone === 'center') {
+      // 중앙에 있을 때
+      if (!isCenterGazeActiveRef.current) {
+        // 중앙 응시 시작
+        centerGazeStartTimeRef.current = now;
+        isCenterGazeActiveRef.current = true;
+        console.log('👁️ 중앙 응시 시작');
+      } else {
+        // 이미 중앙 응시 중
+        const gazeDuration = now - (centerGazeStartTimeRef.current || now);
+        if (gazeDuration >= CENTER_GAZE_DURATION && onCenterGaze) {
+          console.log('✅ 중앙 응시 완료 (2초) - 선택 실행');
+          onCenterGaze();
+          // 응시 상태 초기화 (중복 실행 방지)
+          centerGazeStartTimeRef.current = null;
+          isCenterGazeActiveRef.current = false;
+        }
+      }
+    } else {
+      // 중앙이 아닐 때 - 응시 상태 초기화
+      if (isCenterGazeActiveRef.current) {
+        console.log('👁️ 중앙 응시 중단');
+      }
+      centerGazeStartTimeRef.current = null;
+      isCenterGazeActiveRef.current = false;
+    }
+
     currentZoneRef.current = newZone;
-  }, [onZoneChange, ZONE_CHANGE_COOLDOWN]);
+  }, [onZoneChange, onCenterGaze, ZONE_CHANGE_COOLDOWN, CENTER_GAZE_DURATION]);
 
   // 커서 업데이트 (화면 하단 절반으로 제한 + 강화된 스무딩)
   const updateGazeCursor = (position: Position) => {
