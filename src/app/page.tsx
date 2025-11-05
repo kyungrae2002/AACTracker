@@ -22,6 +22,7 @@ export default function MainPage() {
   const [finalSentence, setFinalSentence] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isQuestionMode, setIsQuestionMode] = useState<boolean>(false);
+  const [speechInitialized, setSpeechInitialized] = useState(false);
 
   // 현재 선택된 버튼 인덱스 (zone 기반 선택)
   const [selectedButtonIndex, setSelectedButtonIndex] = useState(0);
@@ -43,9 +44,35 @@ export default function MainPage() {
     setIsMounted(true);
     checkScreenSize();
 
+    // 음성 초기화 (모바일에서 필요)
+    const initSpeech = () => {
+      if (!speechInitialized && typeof window !== 'undefined' && window.speechSynthesis) {
+        // 빈 utterance로 음성 시스템 초기화 (모바일 브라우저용)
+        const utterance = new SpeechSynthesisUtterance('');
+        utterance.volume = 0;
+        window.speechSynthesis.speak(utterance);
+        setSpeechInitialized(true);
+        console.log('🔊 음성 시스템 초기화 완료');
+      }
+    };
+
+    // 첫 클릭/터치 시 음성 초기화
+    const handleFirstInteraction = () => {
+      initSpeech();
+      document.removeEventListener('click', handleFirstInteraction);
+      document.removeEventListener('touchstart', handleFirstInteraction);
+    };
+
+    document.addEventListener('click', handleFirstInteraction);
+    document.addEventListener('touchstart', handleFirstInteraction);
+
     window.addEventListener('resize', checkScreenSize);
-    return () => window.removeEventListener('resize', checkScreenSize);
-  }, []);
+    return () => {
+      window.removeEventListener('resize', checkScreenSize);
+      document.removeEventListener('click', handleFirstInteraction);
+      document.removeEventListener('touchstart', handleFirstInteraction);
+    };
+  }, [speechInitialized]);
 
   // 현재 단계에 따른 전체 옵션 가져오기
   const getAllOptions = useCallback((): WordOption[] => {
@@ -80,20 +107,67 @@ export default function MainPage() {
     return allOptions.length > 4;
   }, [getAllOptions, currentStep]);
 
-  // 음성 출력 함수
+  // 음성 출력 함수 (모바일 호환)
   const speakSentence = useCallback((text: string) => {
-    // 이전 음성 중지
-    window.speechSynthesis.cancel();
+    try {
+      // 이전 음성 중지
+      window.speechSynthesis.cancel();
 
-    // 새로운 음성 생성
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'ko-KR'; // 한국어 설정
-    utterance.rate = 1.0; // 속도 (0.1 ~ 10)
-    utterance.pitch = 1.0; // 음높이 (0 ~ 2)
-    utterance.volume = 1.0; // 볼륨 (0 ~ 1)
+      // 음성 목록 로드 대기 (모바일에서 필요)
+      const loadVoices = () => {
+        return new Promise<void>((resolve) => {
+          const voices = window.speechSynthesis.getVoices();
+          if (voices.length > 0) {
+            resolve();
+          } else {
+            window.speechSynthesis.onvoiceschanged = () => {
+              resolve();
+            };
+            // 타임아웃 추가 (최대 1초 대기)
+            setTimeout(() => resolve(), 1000);
+          }
+        });
+      };
 
-    console.log('🔊 음성 출력:', text);
-    window.speechSynthesis.speak(utterance);
+      loadVoices().then(() => {
+        // 새로운 음성 생성
+        const utterance = new SpeechSynthesisUtterance(text);
+
+        // 한국어 음성 찾기
+        const voices = window.speechSynthesis.getVoices();
+        const koreanVoice = voices.find(voice =>
+          voice.lang === 'ko-KR' || voice.lang.startsWith('ko')
+        );
+
+        if (koreanVoice) {
+          utterance.voice = koreanVoice;
+          console.log('🔊 사용 음성:', koreanVoice.name);
+        } else {
+          console.log('⚠️ 한국어 음성 없음, 기본 음성 사용');
+        }
+
+        utterance.lang = 'ko-KR'; // 한국어 설정
+        utterance.rate = 0.9; // 속도 약간 느리게 (모바일에서 더 명확)
+        utterance.pitch = 1.0; // 음높이 (0 ~ 2)
+        utterance.volume = 1.0; // 볼륨 (0 ~ 1)
+
+        // 이벤트 리스너 추가 (디버깅용)
+        utterance.onstart = () => {
+          console.log('🔊 음성 출력 시작:', text);
+        };
+        utterance.onend = () => {
+          console.log('✅ 음성 출력 완료');
+        };
+        utterance.onerror = (event) => {
+          console.error('❌ 음성 출력 에러:', event);
+        };
+
+        // 음성 출력
+        window.speechSynthesis.speak(utterance);
+      });
+    } catch (error) {
+      console.error('❌ speechSynthesis 에러:', error);
+    }
   }, []);
 
   // 선택 초기화
