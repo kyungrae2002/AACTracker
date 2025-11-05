@@ -80,8 +80,27 @@ export default function MainPage() {
     return allOptions.length > 4;
   }, [getAllOptions, currentStep]);
 
+  // 음성 출력 함수
+  const speakSentence = useCallback((text: string) => {
+    // 이전 음성 중지
+    window.speechSynthesis.cancel();
+
+    // 새로운 음성 생성
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ko-KR'; // 한국어 설정
+    utterance.rate = 1.0; // 속도 (0.1 ~ 10)
+    utterance.pitch = 1.0; // 음높이 (0 ~ 2)
+    utterance.volume = 1.0; // 볼륨 (0 ~ 1)
+
+    console.log('🔊 음성 출력:', text);
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
   // 선택 초기화
   const resetSelection = useCallback(() => {
+    // 음성 중지
+    window.speechSynthesis.cancel();
+
     setCurrentStep('category');
     setSelectedCategory('');
     setSelectedSubject('');
@@ -142,11 +161,19 @@ export default function MainPage() {
           .then((enhanced) => {
             setFinalSentence(enhanced);
             setIsGenerating(false);
+
+            // 음성 출력
+            speakSentence(enhanced);
+
             setTimeout(resetSelection, 3000);
           })
           .catch((error) => {
             console.error('GPT 문장 생성 실패:', error);
             setIsGenerating(false);
+
+            // 에러 시에도 원본 문장 음성 출력
+            speakSentence(originalSentence);
+
             setTimeout(resetSelection, 3000);
           });
         break;
