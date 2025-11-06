@@ -80,7 +80,7 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
   const blinkStartTimeRef = useRef<number | null>(null);
   const lastBlinkTimesRef = useRef<number[]>([]);
 
-  // Zone 기반 이동을 위한 refs
+  // Zone 기반 이동을 위한 refs (기존 방식 복원)
   const currentZoneRef = useRef<'left' | 'center' | 'right'>('center');
   const lastZoneChangeRef = useRef<number>(0);
   const ZONE_CHANGE_COOLDOWN = 1000; // 1초 쿨다운
@@ -90,6 +90,10 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
   const SENSITIVITY_Y = 4.0;
   const FRAME_SKIP = 2; // 2프레임마다 1번만 처리 (성능 최적화)
   const MAX_POSITION_CHANGE = 70; // 50 → 70 (더 빠른 이동 허용)
+
+  // 중앙 중력 관련 상수
+  const CENTER_GRAVITY_RADIUS = 0.2; // 화면 너비의 20% 영역에서 중력 작용
+  const GRAVITY_STRENGTH = 2.6; // 중력 강도 (0~1, 높을수록 강함) - 2배로 증가
 
   // 눈 깜빡임 감지 상수
   const EAR_THRESHOLD = 0.21; // 눈을 감은 것으로 판단하는 EAR 임계값
@@ -314,34 +318,42 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
     return { x: ratioX, y: ratioY };
   };
 
-  // Zone 감지 함수 (화면 3등분)
+  // Zone 감지 함수 (중앙 원 기준으로 변경)
   const detectZone = useCallback((position: Position) => {
     const now = Date.now();
     const screenWidth = window.innerWidth;
-    const zoneWidth = screenWidth / 3;
+    const screenCenterX = screenWidth / 2;
+    const gravityRadius = screenWidth * CENTER_GRAVITY_RADIUS;
 
-    // 현재 zone 계산
+    // 중앙으로부터의 거리 계산
+    const distanceFromCenter = position.x - screenCenterX;
+    const absDistance = Math.abs(distanceFromCenter);
+
+    // 현재 zone 계산 (중앙 원 기준)
     let newZone: 'left' | 'center' | 'right';
-    if (position.x < zoneWidth) {
-      newZone = 'left';
-    } else if (position.x < zoneWidth * 2) {
+    if (absDistance <= gravityRadius) {
+      // 중앙 원 안에 있음
       newZone = 'center';
+    } else if (distanceFromCenter < 0) {
+      // 중앙 원 왼쪽 밖
+      newZone = 'left';
     } else {
+      // 중앙 원 오른쪽 밖
       newZone = 'right';
     }
 
     const prevZone = currentZoneRef.current;
 
-    // Zone이 변경되었고 center로 돌아왔을 때
+    // Zone이 변경되었고 center(원 안)로 돌아왔을 때
     if (prevZone !== 'center' && newZone === 'center') {
       // 쿨다운 체크
       if (now - lastZoneChangeRef.current > ZONE_CHANGE_COOLDOWN) {
         if (prevZone === 'left' && onZoneChange) {
-          console.log('👈 Left zone to center - move selection left');
+          console.log('👈 원 왼쪽에서 중앙으로 - 왼쪽으로 이동');
           onZoneChange('left');
           lastZoneChangeRef.current = now;
         } else if (prevZone === 'right' && onZoneChange) {
-          console.log('👉 Right zone to center - move selection right');
+          console.log('👉 원 오른쪽에서 중앙으로 - 오른쪽으로 이동');
           onZoneChange('right');
           lastZoneChangeRef.current = now;
         }
@@ -349,9 +361,9 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
     }
 
     currentZoneRef.current = newZone;
-  }, [onZoneChange, ZONE_CHANGE_COOLDOWN]);
+  }, [onZoneChange, ZONE_CHANGE_COOLDOWN, CENTER_GRAVITY_RADIUS]);
 
-  // 커서 업데이트 (화면 하단 절반으로 제한 + 강화된 스무딩)
+  // 커서 업데이트 (화면 하단 절반으로 제한 + 중앙 중력 효과)
   const updateGazeCursor = (position: Position) => {
     if (!gazeCursorRef.current) return;
 
@@ -361,7 +373,27 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
     const constrainedY = Math.max(minY, Math.min(maxY, position.y));
 
     // X 좌표는 전체 범위 사용
-    const constrainedX = Math.max(30, Math.min(window.innerWidth - 30, position.x));
+    let constrainedX = Math.max(30, Math.min(window.innerWidth - 30, position.x));
+
+    // 중앙 중력 효과 적용
+    const screenCenterX = window.innerWidth / 2;
+    const distanceFromCenter = Math.abs(constrainedX - screenCenterX);
+    const gravityRadius = window.innerWidth * CENTER_GRAVITY_RADIUS;
+
+    if (distanceFromCenter < gravityRadius) {
+      // 중앙 근처에서 중력 작용
+      const gravityRatio = distanceFromCenter / gravityRadius; // 0(중앙) ~ 1(경계)
+      const gravityPull = (1 - gravityRatio) * GRAVITY_STRENGTH;
+
+      // 중앙으로 끌어당기기
+      if (constrainedX < screenCenterX) {
+        constrainedX = constrainedX + (screenCenterX - constrainedX) * gravityPull;
+      } else {
+        constrainedX = constrainedX - (constrainedX - screenCenterX) * gravityPull;
+      }
+
+      console.log(`🧲 Gravity applied: distance=${distanceFromCenter.toFixed(0)}, pull=${gravityPull.toFixed(2)}`);
+    }
 
     let targetX = constrainedX;
     let targetY = constrainedY;
@@ -746,49 +778,20 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
         `
       }} />
 
-      {/* Zone 시각화 - 화면 3등분 */}
+      {/* 중앙 원 기준 Zone 시각화 */}
       <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 999998 }}>
-        {/* 왼쪽 영역 */}
+        {/* 중앙 Zone (원) - 중력 영역 */}
         <div
-          className="absolute top-0 left-0 h-full opacity-20"
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-solid border-green-500 opacity-40"
           style={{
-            width: '33.33%',
-            backgroundColor: '#3B82F6',
-            borderRight: '2px dashed #60A5FA'
+            width: `${CENTER_GRAVITY_RADIUS * 200}vw`,
+            height: `${CENTER_GRAVITY_RADIUS * 200}vw`,
+            background: 'radial-gradient(circle, rgba(16, 185, 129, 0.3) 0%, transparent 70%)',
+            boxShadow: '0 0 40px rgba(16, 185, 129, 0.5)'
           }}
         >
-          <div className="flex items-center justify-center h-full text-white text-4xl font-bold opacity-50">
-            ← 왼쪽
-          </div>
-        </div>
-
-        {/* 중앙 영역 */}
-        <div
-          className="absolute top-0 h-full opacity-20"
-          style={{
-            left: '33.33%',
-            width: '33.33%',
-            backgroundColor: '#10B981',
-            borderLeft: '2px dashed #60A5FA',
-            borderRight: '2px dashed #F87171'
-          }}
-        >
-          <div className="flex items-center justify-center h-full text-white text-4xl font-bold opacity-50">
+          <div className="flex items-center justify-center h-full text-green-600 text-2xl font-bold opacity-80">
             중앙
-          </div>
-        </div>
-
-        {/* 오른쪽 영역 */}
-        <div
-          className="absolute top-0 right-0 h-full opacity-20"
-          style={{
-            width: '33.33%',
-            backgroundColor: '#EF4444',
-            borderLeft: '2px dashed #F87171'
-          }}
-        >
-          <div className="flex items-center justify-center h-full text-white text-4xl font-bold opacity-50">
-            오른쪽 →
           </div>
         </div>
       </div>

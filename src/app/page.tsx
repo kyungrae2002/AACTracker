@@ -254,7 +254,7 @@ export default function MainPage() {
     }
   }, [currentStep, currentPage, getAllOptions, resetSelection, selectedCategory, selectedSubject, isQuestionMode]);
 
-  // Zone 기반 버튼 이동 핸들러
+  // Zone 기반 버튼 이동 핸들러 (기존 방식)
   const handleZoneChange = useCallback((direction: 'left' | 'right') => {
     // 이미 처리 중이면 무시
     if (isProcessingSaccadeRef.current) {
