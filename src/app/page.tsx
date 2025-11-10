@@ -47,12 +47,17 @@ export default function MainPage() {
     // 음성 초기화 (모바일에서 필요)
     const initSpeech = () => {
       if (!speechInitialized && typeof window !== 'undefined' && window.speechSynthesis) {
-        // 빈 utterance로 음성 시스템 초기화 (모바일 브라우저용)
-        const utterance = new SpeechSynthesisUtterance('');
-        utterance.volume = 0;
-        window.speechSynthesis.speak(utterance);
-        setSpeechInitialized(true);
-        console.log('🔊 음성 시스템 초기화 완료');
+        try {
+          // 빈 utterance로 음성 시스템 초기화 (모바일 브라우저용)
+          const utterance = new SpeechSynthesisUtterance('');
+          utterance.volume = 0;
+          window.speechSynthesis.speak(utterance);
+          setSpeechInitialized(true);
+          console.log('🔊 음성 시스템 초기화 완료');
+        } catch (error) {
+          console.warn('⚠️ 음성 시스템 초기화 실패:', error);
+          // 초기화 실패해도 프로그램은 계속 실행
+        }
       }
     };
 
@@ -107,73 +112,112 @@ export default function MainPage() {
     return allOptions.length > 4;
   }, [getAllOptions, currentStep]);
 
-  // 음성 출력 함수 (모바일 호환)
+  // 음성 출력 함수 (모바일 호환 + 에러 처리 강화)
   const speakSentence = useCallback((text: string) => {
+    // speechSynthesis 지원 여부 확인
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      console.warn('⚠️ speechSynthesis를 지원하지 않는 브라우저입니다');
+      return;
+    }
+
     try {
-      // 이전 음성 중지
-      window.speechSynthesis.cancel();
+      // 이전 음성 중지 (에러 처리 추가)
+      try {
+        window.speechSynthesis.cancel();
+      } catch (cancelError) {
+        console.warn('⚠️ 음성 중지 실패:', cancelError);
+      }
 
       // 음성 목록 로드 대기 (모바일에서 필요)
       const loadVoices = () => {
-        return new Promise<void>((resolve) => {
-          const voices = window.speechSynthesis.getVoices();
-          if (voices.length > 0) {
-            resolve();
-          } else {
-            window.speechSynthesis.onvoiceschanged = () => {
+        return new Promise<void>((resolve, reject) => {
+          try {
+            const voices = window.speechSynthesis.getVoices();
+            if (voices.length > 0) {
               resolve();
-            };
-            // 타임아웃 추가 (최대 1초 대기)
-            setTimeout(() => resolve(), 1000);
+            } else {
+              window.speechSynthesis.onvoiceschanged = () => {
+                try {
+                  resolve();
+                } catch (error) {
+                  reject(error);
+                }
+              };
+              // 타임아웃 추가 (최대 2초 대기)
+              setTimeout(() => resolve(), 2000);
+            }
+          } catch (error) {
+            reject(error);
           }
         });
       };
 
-      loadVoices().then(() => {
-        // 새로운 음성 생성
-        const utterance = new SpeechSynthesisUtterance(text);
+      loadVoices()
+        .then(() => {
+          try {
+            // 새로운 음성 생성
+            const utterance = new SpeechSynthesisUtterance(text);
 
-        // 한국어 음성 찾기
-        const voices = window.speechSynthesis.getVoices();
-        const koreanVoice = voices.find(voice =>
-          voice.lang === 'ko-KR' || voice.lang.startsWith('ko')
-        );
+            // 한국어 음성 찾기
+            const voices = window.speechSynthesis.getVoices();
+            const koreanVoice = voices.find(voice =>
+              voice.lang === 'ko-KR' || voice.lang.startsWith('ko')
+            );
 
-        if (koreanVoice) {
-          utterance.voice = koreanVoice;
-          console.log('🔊 사용 음성:', koreanVoice.name);
-        } else {
-          console.log('⚠️ 한국어 음성 없음, 기본 음성 사용');
-        }
+            if (koreanVoice) {
+              utterance.voice = koreanVoice;
+              console.log('🔊 사용 음성:', koreanVoice.name);
+            } else {
+              console.log('⚠️ 한국어 음성 없음, 기본 음성 사용');
+            }
 
-        utterance.lang = 'ko-KR'; // 한국어 설정
-        utterance.rate = 0.9; // 속도 약간 느리게 (모바일에서 더 명확)
-        utterance.pitch = 1.0; // 음높이 (0 ~ 2)
-        utterance.volume = 1.0; // 볼륨 (0 ~ 1)
+            utterance.lang = 'ko-KR'; // 한국어 설정
+            utterance.rate = 0.9; // 속도 약간 느리게 (모바일에서 더 명확)
+            utterance.pitch = 1.0; // 음높이 (0 ~ 2)
+            utterance.volume = 1.0; // 볼륨 (0 ~ 1)
 
-        // 이벤트 리스너 추가 (디버깅용)
-        utterance.onstart = () => {
-          console.log('🔊 음성 출력 시작:', text);
-        };
-        utterance.onend = () => {
-          console.log('✅ 음성 출력 완료');
-        };
-        utterance.onerror = (event) => {
-          console.error('❌ 음성 출력 에러:', event);
-        };
+            // 이벤트 리스너 추가 (디버깅용)
+            utterance.onstart = () => {
+              console.log('🔊 음성 출력 시작:', text);
+            };
+            utterance.onend = () => {
+              console.log('✅ 음성 출력 완료');
+            };
+            utterance.onerror = (event) => {
+              console.error('❌ 음성 출력 에러:', event);
+              // 에러가 발생해도 프로그램은 계속 실행
+            };
 
-        // 음성 출력
-        window.speechSynthesis.speak(utterance);
-      });
+            // 음성 출력 (에러 처리 추가)
+            try {
+              window.speechSynthesis.speak(utterance);
+            } catch (speakError) {
+              console.error('❌ speak() 호출 실패:', speakError);
+            }
+          } catch (utteranceError) {
+            console.error('❌ utterance 생성 실패:', utteranceError);
+          }
+        })
+        .catch((loadError) => {
+          console.error('❌ 음성 목록 로드 실패:', loadError);
+          // 에러가 발생해도 프로그램은 계속 실행
+        });
     } catch (error) {
       console.error('❌ speechSynthesis 에러:', error);
+      // 에러가 발생해도 프로그램은 계속 실행
     }
   }, []);
 
   // 선택 초기화
   const resetSelection = useCallback(() => {
-    // 음성 중지
-    window.speechSynthesis.cancel();
+    // 음성 중지 (안전하게)
+    try {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    } catch (error) {
+      console.warn('⚠️ 음성 중지 실패:', error);
+    }
 
     setCurrentStep('category');
     setSelectedCategory('');
@@ -322,7 +366,7 @@ export default function MainPage() {
       return {
         left: '56px',
         top: '150px',
-        gap: '25px',
+        gap: '14px',
         buttonWidth: 300,
       };
     }
@@ -347,7 +391,7 @@ export default function MainPage() {
       buttonWidth = screenWidth / (buttonCount + 2);
     }
 
-    const gap = 25;
+    const gap = 14;
     const totalWidth = buttonCount * buttonWidth + (buttonCount - 1) * gap;
     const leftPosition = Math.max(56, (screenWidth - totalWidth) / 2);
     const topPosition = isDesktop ? '150px' : '140px';

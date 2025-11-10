@@ -16,25 +16,25 @@ export interface SelectionButtonProps {
 }
 
 const SelectionButton = forwardRef<HTMLButtonElement, SelectionButtonProps>(
-  ({ id, label, onClick, onMouseEnter, onMouseLeave, isDesktop = false, customWidth, isNextButton = false, isSelected = false }, ref) => {
+  ({ id, label, onClick, onMouseEnter, onMouseLeave, customWidth, isNextButton = false, isSelected = false }, ref) => {
 
     // customWidth가 있으면 사용, 없으면 기본값 사용
-    const buttonWidth = customWidth ? `${customWidth}px` : (isDesktop ? '480px' : '320px');
-    const buttonHeight = isDesktop ? '380px' : '360px';
-    const fontSize = isDesktop ? '85px' : '65px';
-    const lineHeight = isDesktop ? '100px' : '78px';
+    const buttonWidth = customWidth ? `${customWidth}px` : '240px';
+    const buttonHeight = '500px';
+    const fontSize = '64px';
+    const lineHeight = '73px';
 
     // 선택 상태에 따른 스타일
     const getButtonStyle = () => {
       if (isSelected) {
         return {
-          backgroundColor: 'rgba(254, 100, 51, 0.63)',
-          borderColor: '#FE6433',
+          background: 'linear-gradient(0deg, rgba(165, 232, 190, 0.8), rgba(165, 232, 190, 0.8)), rgba(255, 255, 255, 0.09)',
+          borderColor: '#A5E8BE',
         };
       }
       return {
-        backgroundColor: 'white',
-        borderColor: '#D9E4E8',
+        background: 'linear-gradient(0deg, #FFFFFF, #FFFFFF), rgba(255, 255, 255, 0.09)',
+        borderColor: '#E7E7E7',
       };
     };
 
@@ -47,12 +47,12 @@ const SelectionButton = forwardRef<HTMLButtonElement, SelectionButtonProps>(
         onClick={onClick}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
-        className="flex flex-row justify-center items-center rounded-[30px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] backdrop-blur-[15px] transition-all duration-200"
+        className="flex flex-row justify-center items-center rounded-[20px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] backdrop-blur-[15px] transition-all duration-200"
         style={{
           width: buttonWidth,
           height: buttonHeight,
-          padding: '30px 50px',
-          backgroundColor: buttonStyle.backgroundColor,
+          padding: '30px 54px',
+          background: buttonStyle.background,
           border: `6px solid ${buttonStyle.borderColor}`,
           transform: isSelected ? 'scale(1.05)' : 'scale(1)',
         }}

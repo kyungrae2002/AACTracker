@@ -21,6 +21,7 @@ const PROMPT_TEMPLATES = {
   base: (subject: string, predicate: string, category: string, originalSentence: string) => `
 너는 말 못하는 사람들이 자연스럽게 대화할 수 있도록 도와주는 전문가야.
 기계 같은 문장이 아니라, 실제로 사람들이 일상에서 쓰는 말투로 바꿔줘.
+대화할 때 너가 쓰는 말투처럼 자연스럽고 뭔가 정보를 전달하는 것이 아닌 친구나 가족과 대화할 때 쓰는 편한 말투로 바꿔줘.
 
 입력된 정보:
 - 주어: ${subject}
@@ -44,7 +45,7 @@ const PROMPT_TEMPLATES = {
 
 5. 최대한 짧고 간결하게
 
-중요: '자연스럽게', '다시' 같은 단어 뒤에 붙이지 마!`,
+중요: '자연스럽게', '다시' 같은 단어 뒤에 붙이지 마!, 길게 말하지마!, 장황하게 설명하지마!, 문장을 길게 만들지마!, 불필요한 수식어 넣지마!`,
 
   question: (subject: string, predicate: string, category: string, originalSentence: string) => `
 말 못하는 사람이 질문할 때 자연스럽게 들리도록 도와줘.

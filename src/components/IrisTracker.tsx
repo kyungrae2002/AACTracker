@@ -80,6 +80,10 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
   const blinkStartTimeRef = useRef<number | null>(null);
   const lastBlinkTimesRef = useRef<number[]>([]);
 
+  // 적응형 EAR 임계값을 위한 상태
+  const baselineEARHistoryRef = useRef<number[]>([]); // 눈을 뜬 상태의 EAR 히스토리
+  const adaptiveThresholdRef = useRef<number>(0.21); // 동적으로 계산된 임계값 (초기값)
+
   // Zone 기반 이동을 위한 refs (기존 방식 복원)
   const currentZoneRef = useRef<'left' | 'center' | 'right'>('center');
   const lastZoneChangeRef = useRef<number>(0);
@@ -96,11 +100,16 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
   const GRAVITY_STRENGTH = 2.6; // 중력 강도 (0~1, 높을수록 강함) - 2배로 증가
 
   // 눈 깜빡임 감지 상수
-  const EAR_THRESHOLD = 0.21; // 눈을 감은 것으로 판단하는 EAR 임계값
-  const LONG_BLINK_DURATION = 400; // 긴 깜빡임으로 판단하는 최소 지속 시간 (ms)
+  const LONG_BLINK_DURATION = 800; // 긴 깜빡임으로 판단하는 최소 지속 시간 (ms)
   const MAX_BLINK_DURATION = 2000; // 최대 깜빡임 지속 시간 (ms) - 이보다 길면 무시
-  const DOUBLE_BLINK_WINDOW = 1000; // 짧은 깜빡임이 여러 번 발생했는지 확인하는 시간 창 (ms)
+  const DOUBLE_BLINK_WINDOW = 900; // 짧은 깜빡임이 여러 번 발생했는지 확인하는 시간 창 (ms)
   const DOUBLE_BLINK_COUNT = 2; // "깜빡깜빡"으로 인식하는 최소 깜빡임 횟수
+
+  // 적응형 EAR 임계값 설정
+  // 사용자의 눈 크기에 자동으로 적응하여 최적의 깜빡임 감지 임계값을 계산
+  const BASELINE_HISTORY_SIZE = 90; // 3초간의 EAR 데이터 (30fps 기준)
+  const BASELINE_MIN_SAMPLES = 30; // 최소 1초의 데이터가 쌓여야 적응형 임계값 사용
+  const BASELINE_UPDATE_RATIO = 0.85; // 기준값의 85%를 임계값으로 사용
 
   // 프로덕션 환경 체크
   useEffect(() => {
@@ -213,6 +222,35 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
     return (vertical1 + vertical2) / (2.0 * horizontal);
   }, []);
 
+  // 적응형 EAR 임계값 업데이트 함수
+  const updateAdaptiveThreshold = useCallback((currentEAR: number) => {
+    // 현재 임계값보다 높은 EAR만 기록 (눈을 뜬 상태로 간주)
+    if (currentEAR > adaptiveThresholdRef.current * 1.1) {
+      baselineEARHistoryRef.current.push(currentEAR);
+
+      // 히스토리 크기 제한 (최근 90프레임만 유지)
+      if (baselineEARHistoryRef.current.length > BASELINE_HISTORY_SIZE) {
+        baselineEARHistoryRef.current.shift();
+      }
+
+      // 충분한 샘플이 쌓이면 적응형 임계값 계산
+      if (baselineEARHistoryRef.current.length >= BASELINE_MIN_SAMPLES) {
+        // 최근 데이터의 평균 계산
+        const avgEAR = baselineEARHistoryRef.current.reduce((a, b) => a + b, 0)
+                       / baselineEARHistoryRef.current.length;
+
+        // 평균의 85%를 새로운 임계값으로 설정 (부드러운 전환)
+        const newThreshold = avgEAR * BASELINE_UPDATE_RATIO;
+
+        // 스무딩 적용 (급격한 변화 방지)
+        adaptiveThresholdRef.current = adaptiveThresholdRef.current * 0.95 + newThreshold * 0.05;
+
+        // 임계값 범위 제한 (0.15 ~ 0.28)
+        adaptiveThresholdRef.current = Math.max(0.15, Math.min(0.28, adaptiveThresholdRef.current));
+      }
+    }
+  }, []);
+
   // 눈 깜빡임 감지 및 처리
   const detectBlink = useCallback((landmarks: Landmark[]) => {
     try {
@@ -225,10 +263,19 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
       // 양쪽 눈의 평균 EAR
       const avgEAR = (leftEAR + rightEAR) / 2;
 
-      const currentTime = Date.now();
+      // 적응형 임계값 업데이트
+      updateAdaptiveThreshold(avgEAR);
 
-      // 눈을 감은 상태 (EAR이 임계값 이하)
-      if (avgEAR < EAR_THRESHOLD) {
+      const currentTime = Date.now();
+      const currentThreshold = adaptiveThresholdRef.current;
+
+      // 디버깅: 30프레임마다 한 번씩 로그 출력 (1초에 1번)
+      if (frameSkipCountRef.current % 30 === 0) {
+        console.log(`[EAR] 현재: ${avgEAR.toFixed(3)} | 임계값: ${currentThreshold.toFixed(3)} | 샘플: ${baselineEARHistoryRef.current.length}`);
+      }
+
+      // 눈을 감은 상태 (EAR이 적응형 임계값 이하)
+      if (avgEAR < currentThreshold) {
         if (!isBlinkingRef.current) {
           // 깜빡임 시작
           isBlinkingRef.current = true;
@@ -244,11 +291,9 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
           if (blinkDuration < MAX_BLINK_DURATION) {
             if (blinkDuration >= LONG_BLINK_DURATION) {
               // 긴 깜빡임 감지 - 뒤로가기
-              console.log('긴 깜빡임 감지:', blinkDuration, 'ms');
               onLongBlink?.();
             } else {
               // 짧은 깜빡임 감지
-              console.log('짧은 깜빡임 감지:', blinkDuration, 'ms');
               lastBlinkTimesRef.current.push(currentTime);
 
               // 오래된 깜빡임 기록 제거 (DOUBLE_BLINK_WINDOW 이전 것들)
@@ -258,7 +303,6 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
 
               // 짧은 깜빡임이 여러 번 발생했는지 확인
               if (lastBlinkTimesRef.current.length >= DOUBLE_BLINK_COUNT) {
-                console.log('깜빡깜빡 감지:', lastBlinkTimesRef.current.length, '회');
                 onDoubleBlink?.();
                 // 기록 초기화
                 lastBlinkTimesRef.current = [];
@@ -273,7 +317,7 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
     } catch (error) {
       console.error('눈 깜빡임 감지 오류:', error);
     }
-  }, [calculateEAR, onLongBlink, onDoubleBlink, EAR_THRESHOLD, LONG_BLINK_DURATION, MAX_BLINK_DURATION, DOUBLE_BLINK_WINDOW, DOUBLE_BLINK_COUNT]);
+  }, [calculateEAR, onLongBlink, onDoubleBlink, updateAdaptiveThreshold]);
 
   // Iris 중심점 계산
   const getIrisCenter = (landmarks: Landmark[], irisIndices: number[]): Position | null => {
@@ -349,11 +393,9 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
       // 쿨다운 체크
       if (now - lastZoneChangeRef.current > ZONE_CHANGE_COOLDOWN) {
         if (prevZone === 'left' && onZoneChange) {
-          console.log('👈 원 왼쪽에서 중앙으로 - 왼쪽으로 이동');
           onZoneChange('left');
           lastZoneChangeRef.current = now;
         } else if (prevZone === 'right' && onZoneChange) {
-          console.log('👉 원 오른쪽에서 중앙으로 - 오른쪽으로 이동');
           onZoneChange('right');
           lastZoneChangeRef.current = now;
         }
@@ -391,8 +433,6 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
       } else {
         constrainedX = constrainedX - (constrainedX - screenCenterX) * gravityPull;
       }
-
-      console.log(`🧲 Gravity applied: distance=${distanceFromCenter.toFixed(0)}, pull=${gravityPull.toFixed(2)}`);
     }
 
     let targetX = constrainedX;
@@ -593,16 +633,14 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
       let stream = null;
       let lastError = null;
 
-      console.log('🎥 카메라 시작 시도...');
+      console.log('카메라 시작 시도...');
 
       for (let i = 0; i < constraintsList.length; i++) {
         try {
-          console.log(`${i + 1}차 시도:`, constraintsList[i]);
           stream = await navigator.mediaDevices.getUserMedia(constraintsList[i]);
-          console.log(`✅ ${i + 1}차 시도 성공!`);
           break;
         } catch (error) {
-          console.log(`❌ ${i + 1}차 시도 실패:`, error);
+          console.log(`${i + 1}차 시도 실패:`, error);
           lastError = error;
         }
       }
