@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import AALayout from '@/components/AALayout';
 import SelectionButton from '@/components/SelectionButton';
 import CompletionModal from '@/components/CompletionModal';
+import ProgressBar from '@/components/ProgressBar';
 import { categories, subjects, predicates, buildSentence, WordOption } from '@/data/wordData';
 import { getEnhancedSentence } from '@/lib/openai';
 import { useRegisterIrisHandlers } from '@/contexts/IrisTrackerContext';
@@ -46,29 +47,67 @@ export default function MainPage() {
     setIsMounted(true);
     checkScreenSize();
 
-    // 음성 초기화 (모바일에서 필요)
+    // 웹앱/PWA 음성 초기화 (강화)
     const initSpeech = () => {
       if (!speechInitialized && typeof window !== 'undefined' && window.speechSynthesis) {
         try {
-          // 빈 utterance로 음성 시스템 초기화 (모바일 브라우저용)
-          const utterance = new SpeechSynthesisUtterance('');
-          utterance.volume = 0;
-          window.speechSynthesis.speak(utterance);
-          setSpeechInitialized(true);
-          console.log('🔊 음성 시스템 초기화 완료');
+          console.log('🔊 [웹앱] 음성 시스템 초기화 시작');
+
+          // 음성 목록 강제 로드
+          const loadVoicesForWebApp = () => {
+            const voices = window.speechSynthesis.getVoices();
+            console.log('📋 [웹앱] 초기화 시점 음성 목록:', voices.length, '개');
+
+            if (voices.length > 0) {
+              // 빈 utterance로 음성 시스템 활성화
+              const utterance = new SpeechSynthesisUtterance('');
+              utterance.volume = 0;
+              window.speechSynthesis.speak(utterance);
+              setSpeechInitialized(true);
+              console.log('✅ [웹앱] 음성 시스템 초기화 완료');
+            }
+          };
+
+          // 즉시 실행
+          loadVoicesForWebApp();
+
+          // 음성 목록 변경 이벤트 (웹앱에서 지연 로드 대응)
+          if (window.speechSynthesis.onvoiceschanged !== undefined) {
+            window.speechSynthesis.onvoiceschanged = () => {
+              console.log('🔄 [웹앱] 음성 목록 변경 감지');
+              loadVoicesForWebApp();
+            };
+          }
+
+          // 타임아웃 후 재시도
+          setTimeout(() => {
+            if (!speechInitialized) {
+              console.log('⏱️ [웹앱] 타임아웃 후 재초기화');
+              loadVoicesForWebApp();
+            }
+          }, 1000);
         } catch (error) {
-          console.warn('⚠️ 음성 시스템 초기화 실패:', error);
-          // 초기화 실패해도 프로그램은 계속 실행
+          console.warn('⚠️ [웹앱] 음성 시스템 초기화 실패:', error);
         }
       }
     };
 
-    // 첫 클릭/터치 시 음성 초기화
+    // 첫 클릭/터치 시 음성 초기화 (웹앱에서 필수)
     const handleFirstInteraction = () => {
+      console.log('👆 [웹앱] 첫 사용자 제스처 감지');
       initSpeech();
       document.removeEventListener('click', handleFirstInteraction);
       document.removeEventListener('touchstart', handleFirstInteraction);
     };
+
+    // 웹앱 환경에서는 즉시 초기화 시도
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+      || (window.navigator as any).standalone === true;
+
+    if (isStandalone) {
+      console.log('📱 [웹앱] 독립 실행형 모드 감지');
+      initSpeech(); // 웹앱에서는 즉시 시도
+    }
 
     document.addEventListener('click', handleFirstInteraction);
     document.addEventListener('touchstart', handleFirstInteraction);
@@ -114,7 +153,7 @@ export default function MainPage() {
     return allOptions.length > 4;
   }, [getAllOptions, currentStep]);
 
-  // 음성 출력 함수 (모바일 호환 + 에러 처리 강화)
+  // 음성 출력 함수 (웹앱/PWA 최적화)
   const speakSentence = useCallback((text: string) => {
     // speechSynthesis 지원 여부 확인
     if (typeof window === 'undefined' || !window.speechSynthesis) {
@@ -123,90 +162,124 @@ export default function MainPage() {
     }
 
     try {
-      // 이전 음성 중지 (에러 처리 추가)
+      console.log('🔊 [웹앱] TTS 시작 요청:', text);
+
+      // 이전 음성 중지 및 큐 초기화
       try {
         window.speechSynthesis.cancel();
+        // 웹앱에서는 짧은 대기 후 실행이 더 안정적
+        setTimeout(() => {
+          executeSpeech();
+        }, 50);
       } catch (cancelError) {
         console.warn('⚠️ 음성 중지 실패:', cancelError);
+        executeSpeech();
       }
 
-      // 음성 목록 로드 대기 (모바일에서 필요)
-      const loadVoices = () => {
-        return new Promise<void>((resolve, reject) => {
-          try {
-            const voices = window.speechSynthesis.getVoices();
-            if (voices.length > 0) {
-              resolve();
-            } else {
-              window.speechSynthesis.onvoiceschanged = () => {
-                try {
-                  resolve();
-                } catch (error) {
-                  reject(error);
-                }
-              };
-              // 타임아웃 추가 (최대 2초 대기)
-              setTimeout(() => resolve(), 2000);
-            }
-          } catch (error) {
-            reject(error);
+      function executeSpeech() {
+        try {
+          // 음성 목록 가져오기 (웹앱에서는 매번 확인 필요)
+          const voices = window.speechSynthesis.getVoices();
+          console.log('📋 [웹앱] 사용 가능한 음성:', voices.length, '개');
+
+          // 웹앱 환경 확인
+          const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+            || (window.navigator as any).standalone === true
+            || document.referrer.includes('android-app://');
+          console.log('📱 웹앱 모드:', isStandalone ? '예' : '아니오');
+
+          const utterance = new SpeechSynthesisUtterance(text);
+
+          // 한국어 음성 찾기 (우선순위: Google > Samsung > 기타)
+          let koreanVoice = voices.find(voice =>
+            (voice.lang === 'ko-KR' || voice.lang.startsWith('ko')) &&
+            voice.name.includes('Google')
+          );
+
+          if (!koreanVoice) {
+            koreanVoice = voices.find(voice =>
+              (voice.lang === 'ko-KR' || voice.lang.startsWith('ko')) &&
+              voice.name.includes('Samsung')
+            );
           }
-        });
-      };
 
-      loadVoices()
-        .then(() => {
-          try {
-            // 새로운 음성 생성
-            const utterance = new SpeechSynthesisUtterance(text);
-
-            // 한국어 음성 찾기
-            const voices = window.speechSynthesis.getVoices();
-            const koreanVoice = voices.find(voice =>
+          if (!koreanVoice) {
+            koreanVoice = voices.find(voice =>
               voice.lang === 'ko-KR' || voice.lang.startsWith('ko')
             );
-
-            if (koreanVoice) {
-              utterance.voice = koreanVoice;
-              console.log('🔊 사용 음성:', koreanVoice.name);
-            } else {
-              console.log('⚠️ 한국어 음성 없음, 기본 음성 사용');
-            }
-
-            utterance.lang = 'ko-KR'; // 한국어 설정
-            utterance.rate = 0.9; // 속도 약간 느리게 (모바일에서 더 명확)
-            utterance.pitch = 1.0; // 음높이 (0 ~ 2)
-            utterance.volume = 1.0; // 볼륨 (0 ~ 1)
-
-            // 이벤트 리스너 추가 (디버깅용)
-            utterance.onstart = () => {
-              console.log('🔊 음성 출력 시작:', text);
-            };
-            utterance.onend = () => {
-              console.log('✅ 음성 출력 완료');
-            };
-            utterance.onerror = (event) => {
-              console.error('❌ 음성 출력 에러:', event);
-              // 에러가 발생해도 프로그램은 계속 실행
-            };
-
-            // 음성 출력 (에러 처리 추가)
-            try {
-              window.speechSynthesis.speak(utterance);
-            } catch (speakError) {
-              console.error('❌ speak() 호출 실패:', speakError);
-            }
-          } catch (utteranceError) {
-            console.error('❌ utterance 생성 실패:', utteranceError);
           }
-        })
-        .catch((loadError) => {
-          console.error('❌ 음성 목록 로드 실패:', loadError);
-          // 에러가 발생해도 프로그램은 계속 실행
-        });
+
+          if (koreanVoice) {
+            utterance.voice = koreanVoice;
+            console.log('🔊 [웹앱] 선택된 음성:', koreanVoice.name, '/', koreanVoice.lang);
+          } else {
+            console.log('⚠️ [웹앱] 한국어 음성 없음, 기본 음성 사용');
+            if (voices.length > 0) {
+              utterance.voice = voices[0];
+              console.log('🔊 [웹앱] 대체 음성:', voices[0].name);
+            }
+          }
+
+          // 웹앱 최적화 설정
+          utterance.lang = 'ko-KR';
+          utterance.rate = 1.0; // 웹앱에서는 1.0이 가장 안정적
+          utterance.pitch = 1.0;
+          utterance.volume = 1.0;
+
+          // 이벤트 핸들러
+          utterance.onstart = () => {
+            console.log('✅ [웹앱] 음성 출력 시작');
+          };
+
+          utterance.onend = () => {
+            console.log('✅ [웹앱] 음성 출력 완료');
+          };
+
+          utterance.onerror = (event) => {
+            console.error('❌ [웹앱] 음성 출력 에러:', event.error);
+
+            // 웹앱 특정 에러 처리
+            if (event.error === 'not-allowed') {
+              console.error('❌ [웹앱] 음성 권한 거부 - 사용자 제스처 필요');
+            } else if (event.error === 'network') {
+              console.error('❌ [웹앱] 네트워크 오류 - 오프라인 음성 사용 권장');
+            } else if (event.error === 'synthesis-failed') {
+              console.error('❌ [웹앱] 음성 합성 실패 - 재시도 필요');
+              // 재시도
+              setTimeout(() => {
+                try {
+                  window.speechSynthesis.speak(utterance);
+                } catch (retryError) {
+                  console.error('❌ [웹앱] 재시도 실패');
+                }
+              }, 200);
+            }
+          };
+
+          // 음성 출력 실행
+          console.log('🎤 [웹앱] speak() 호출');
+          window.speechSynthesis.speak(utterance);
+
+          // 웹앱에서 일시정지 문제 방지
+          const resumeInterval = setInterval(() => {
+            if (window.speechSynthesis.speaking && window.speechSynthesis.paused) {
+              console.log('⚠️ [웹앱] TTS 일시정지 감지, resume 호출');
+              window.speechSynthesis.resume();
+            }
+            if (!window.speechSynthesis.speaking) {
+              clearInterval(resumeInterval);
+            }
+          }, 100);
+
+          // 10초 후 interval 정리
+          setTimeout(() => clearInterval(resumeInterval), 10000);
+
+        } catch (execError) {
+          console.error('❌ [웹앱] executeSpeech 에러:', execError);
+        }
+      }
     } catch (error) {
-      console.error('❌ speechSynthesis 에러:', error);
-      // 에러가 발생해도 프로그램은 계속 실행
+      console.error('❌ [웹앱] speechSynthesis 에러:', error);
     }
   }, []);
 
@@ -505,6 +578,9 @@ export default function MainPage() {
 
   return (
     <>
+      {/* 진행 상황 바 */}
+      <ProgressBar currentStep={currentStep} />
+
       {/* 문장 완성 모달 */}
       <CompletionModal
         isVisible={showCompletionModal}

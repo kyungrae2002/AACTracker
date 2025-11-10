@@ -686,15 +686,10 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
     }
   };
 
-  // 자동으로 카메라 시작 제거 - 수동 시작으로 변경
-  // 프로덕션 환경에서는 사용자가 명시적으로 카메라를 시작해야 함
+  // 모델 로드 후 즉시 카메라 시작
   useEffect(() => {
-    // 로컬호스트에서만 자동 시작 (개발 편의성)
     if (isModelLoaded && !isTracking && !cameraPermissionRequested) {
-      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      if (isLocalhost) {
-        startCamera();
-      }
+      startCamera();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isModelLoaded]);

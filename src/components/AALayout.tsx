@@ -134,7 +134,7 @@ export default function AALayout({
         className="absolute flex flex-col justify-center bg-white backdrop-blur-[15px]"
         style={{
           left: buttonContainerLeft ? `${buttonContainerLeft}px` : '50%',
-          bottom: '40px',
+          bottom: '50px',
           transform: buttonContainerLeft ? 'none' : 'translateX(-50%)',
           width: buttonContainerWidth ? `${buttonContainerWidth}px` : 'calc(100% - 112px)',
           maxWidth: buttonContainerWidth ? `${buttonContainerWidth}px` : '1260px',
