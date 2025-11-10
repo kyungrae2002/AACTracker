@@ -102,7 +102,7 @@ export default function MainPage() {
 
     // 웹앱 환경에서는 즉시 초기화 시도
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches
-      || (window.navigator as any).standalone === true;
+      || (window.navigator as { standalone?: boolean }).standalone === true;
 
     if (isStandalone) {
       console.log('📱 [웹앱] 독립 실행형 모드 감지');
@@ -184,7 +184,7 @@ export default function MainPage() {
 
           // 웹앱 환경 확인
           const isStandalone = window.matchMedia('(display-mode: standalone)').matches
-            || (window.navigator as any).standalone === true
+            || (window.navigator as { standalone?: boolean }).standalone === true
             || document.referrer.includes('android-app://');
           console.log('📱 웹앱 모드:', isStandalone ? '예' : '아니오');
 
@@ -249,7 +249,7 @@ export default function MainPage() {
               setTimeout(() => {
                 try {
                   window.speechSynthesis.speak(utterance);
-                } catch (retryError) {
+                } catch {
                   console.error('❌ [웹앱] 재시도 실패');
                 }
               }, 200);
@@ -411,7 +411,7 @@ export default function MainPage() {
           });
         break;
     }
-  }, [currentStep, currentPage, getAllOptions, resetSelection, selectedCategory, selectedSubject, isQuestionMode]);
+  }, [currentStep, currentPage, getAllOptions, resetSelection, selectedCategory, selectedSubject, isQuestionMode, speakSentence]);
 
   // Zone 기반 버튼 이동 핸들러 (기존 방식)
   const handleZoneChange = useCallback((direction: 'left' | 'right') => {
