@@ -8,6 +8,8 @@ interface AALayoutProps {
   onBack?: () => void;
   outputText?: string;
   isDesktop?: boolean;
+  buttonContainerLeft?: number;
+  buttonContainerWidth?: number;
 }
 
 // 스타일 상수
@@ -37,9 +39,10 @@ export default function AALayout({
   onBack,
   outputText = '',
   isDesktop = false,
+  buttonContainerLeft,
+  buttonContainerWidth,
 }: AALayoutProps) {
   const style = isDesktop ? STYLES.desktop : STYLES.mobile;
-  const { buttonHeight, buttonFontSize } = STYLES.common;
 
   return (
     <div className="relative w-screen h-screen bg-[#FFF2DB] overflow-hidden">
@@ -60,22 +63,27 @@ export default function AALayout({
       {/* 상단 영역 */}
       <div className="absolute left-[56px] right-[56px] top-[40px] z-10">
         <div className="flex items-start justify-between">
-          {/* 좌측: 뒤로가기 */}
+          {/* 좌측: 이전 */}
           <div className="flex flex-col gap-2">
             <button
               onClick={onBack}
-              className="flex items-center justify-center bg-[#5A5A5A] rounded-[100px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] transition-all hover:bg-[#6A6A6A]"
+              className="flex items-center justify-center gap-[10px] bg-[#212121] rounded-[100px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] transition-all hover:bg-[#3A3A3A]"
               style={{
-                width: style.backButtonWidth,
-                height: buttonHeight,
-                padding: '15px 25px',
+                width: '167px',
+                height: '80px',
+                padding: '20px 35px',
               }}
             >
+              <img
+                src="/Frame 1171275969.png"
+                alt="back icon"
+                style={{ width: '28px', height: '28px', flexShrink: 0 }}
+              />
               <span
                 className="font-['NanumSquareRound'] font-bold text-white"
-                style={{ fontSize: buttonFontSize, lineHeight: '30px' }}
+                style={{ fontSize: '32px', lineHeight: '36px' }}
               >
-                뒤로가기
+                이전
               </span>
             </button>
           </div>
@@ -92,53 +100,28 @@ export default function AALayout({
             {title}
           </h1>
 
-          {/* 우측: 문장/설정 */}
+          {/* 우측: 문장 */}
           <div className="flex flex-col gap-2">
-            <div className="flex gap-2">
-              <button
-                className="flex items-center justify-center gap-[10px] bg-[#FE6433] rounded-[100px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] transition-all hover:bg-[#FF7544]"
-                style={{
-                  width: '167px',
-                  height: '80px',
-                  padding: '20px 35px',
-                }}
+            <button
+              className="flex items-center justify-center gap-[10px] bg-[#FE6433] rounded-[100px] transition-all hover:bg-[#FF7544]"
+              style={{
+                width: '167px',
+                height: '80px',
+                padding: '20px 35px',
+              }}
+            >
+              <img
+                src="/Vector.png"
+                alt="sentence icon"
+                style={{ width: '28px', height: '28px', flexShrink: 0 }}
+              />
+              <span
+                className="font-['NanumSquareRound'] font-bold text-white"
+                style={{ fontSize: '32px', lineHeight: '36px' }}
               >
-                <div className="w-[28px] h-[28px] flex items-center justify-center">
-                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M7 14C7 14 10 8 14 8C18 8 21 14 21 14C21 14 18 20 14 20C10 20 7 14 7 14Z"
-                          fill="white" stroke="white" strokeWidth="1.5"/>
-                    <circle cx="14" cy="14" r="3" fill="white"/>
-                  </svg>
-                </div>
-                <span
-                  className="font-['NanumSquareRound'] font-bold text-white"
-                  style={{ fontSize: '32px', lineHeight: '36px' }}
-                >
-                  문장
-                </span>
-              </button>
-              <button
-                className="flex items-center justify-center gap-[10px] bg-[#212121] rounded-[100px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] transition-all hover:bg-[#3A3A3A]"
-                style={{
-                  width: '167px',
-                  height: '80px',
-                  padding: '20px 35px',
-                }}
-              >
-                <div className="w-[28px] h-[28px] flex items-center justify-center">
-                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="14" cy="14" r="11" stroke="white" strokeWidth="1.5" fill="none"/>
-                    <circle cx="14" cy="14" r="6" fill="white"/>
-                  </svg>
-                </div>
-                <span
-                  className="font-['NanumSquareRound'] font-bold text-white"
-                  style={{ fontSize: '32px', lineHeight: '36px' }}
-                >
-                  설정
-                </span>
-              </button>
-            </div>
+                문장
+              </span>
+            </button>
           </div>
         </div>
       </div>
@@ -148,37 +131,42 @@ export default function AALayout({
 
       {/* 하단 텍스트 출력 영역 */}
       <div
-        className="absolute flex items-center bg-white backdrop-blur-[15px]"
+        className="absolute flex flex-col justify-center bg-white backdrop-blur-[15px]"
         style={{
-          left: '50%',
-          bottom: '50px',
-          transform: 'translateX(-50%)',
-          width: 'calc(100% - 112px)',
-          maxWidth: '1260px',
-          height: '200px',
-          padding: '30px 82px',
-          gap: '25px',
+          left: buttonContainerLeft ? `${buttonContainerLeft}px` : '50%',
+          bottom: '40px',
+          transform: buttonContainerLeft ? 'none' : 'translateX(-50%)',
+          width: buttonContainerWidth ? `${buttonContainerWidth}px` : 'calc(100% - 112px)',
+          maxWidth: buttonContainerWidth ? `${buttonContainerWidth}px` : '1260px',
+          height: '140px',
+          padding: '20px 50px',
           borderRadius: '32px',
         }}
       >
-        <div className="flex flex-col justify-center items-start gap-[34px] w-[1096px] h-[78px]">
-          <div className="flex flex-row justify-center items-center gap-[28px] w-[442px] h-[54px]">
-            {/* 아이콘 */}
-            <div className="w-[53px] h-[53px]">
-              <svg width="53" height="53" viewBox="0 0 53 53" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M13.25 26.5C13.25 26.5 19.875 15.875 26.5 15.875C33.125 15.875 39.75 26.5 39.75 26.5C39.75 26.5 33.125 37.125 26.5 37.125C19.875 37.125 13.25 26.5 13.25 26.5Z"
-                      fill="#FE6433" stroke="#FE6433" strokeWidth="2"/>
-                <circle cx="26.5" cy="26.5" r="5.5" fill="#FE6433"/>
-              </svg>
-            </div>
-            {/* 텍스트 */}
-            <span
-              className="font-['NanumSquareRound'] font-bold text-[#1A1A1A]"
-              style={{ fontSize: '48px', lineHeight: '54px', letterSpacing: '0.01em' }}
-            >
-              {outputText || '문장이 여기에 표시됩니다'}
-            </span>
-          </div>
+        {/* 상단: Group 아이콘 + 텍스트 */}
+        <div className="flex flex-row items-center gap-[28px]">
+          {/* Group.png 아이콘 */}
+          <img
+            src="/Group.png"
+            alt="speech icon"
+            style={{ width: '53px', height: '53px', flexShrink: 0 }}
+          />
+          {/* 텍스트 */}
+          <span
+            className="font-['NanumSquareRound'] font-bold text-[#1A1A1A]"
+            style={{ fontSize: '48px', lineHeight: '54px', letterSpacing: '0.01em' }}
+          >
+            {outputText || '문장이 여기에 표시됩니다'}
+          </span>
+        </div>
+
+        {/* 하단: Line 82.png */}
+        <div className="w-full mt-[15px]">
+          <img
+            src="/Line 82.png"
+            alt="line"
+            style={{ width: '100%', height: 'auto', opacity: 0.15 }}
+          />
         </div>
       </div>
     </div>

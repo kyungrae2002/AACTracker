@@ -20,7 +20,7 @@ const SelectionButton = forwardRef<HTMLButtonElement, SelectionButtonProps>(
 
     // customWidth가 있으면 사용, 없으면 기본값 사용
     const buttonWidth = customWidth ? `${customWidth}px` : '240px';
-    const buttonHeight = '500px';
+    const buttonHeight = '400px';
     const fontSize = '64px';
     const lineHeight = '73px';
 

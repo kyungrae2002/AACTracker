@@ -102,7 +102,7 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
   // 눈 깜빡임 감지 상수
   const LONG_BLINK_DURATION = 800; // 긴 깜빡임으로 판단하는 최소 지속 시간 (ms)
   const MAX_BLINK_DURATION = 2000; // 최대 깜빡임 지속 시간 (ms) - 이보다 길면 무시
-  const DOUBLE_BLINK_WINDOW = 900; // 짧은 깜빡임이 여러 번 발생했는지 확인하는 시간 창 (ms)
+  const DOUBLE_BLINK_WINDOW = 800; // 짧은 깜빡임이 여러 번 발생했는지 확인하는 시간 창 (ms) - 900→600으로 감소
   const DOUBLE_BLINK_COUNT = 2; // "깜빡깜빡"으로 인식하는 최소 깜빡임 횟수
 
   // 적응형 EAR 임계값 설정
@@ -820,15 +820,16 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
       <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 999998 }}>
         {/* 중앙 Zone (원) - 중력 영역 */}
         <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-solid border-green-500 opacity-40"
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-dashed opacity-40"
           style={{
             width: `${CENTER_GRAVITY_RADIUS * 200}vw`,
             height: `${CENTER_GRAVITY_RADIUS * 200}vw`,
-            background: 'radial-gradient(circle, rgba(16, 185, 129, 0.3) 0%, transparent 70%)',
-            boxShadow: '0 0 40px rgba(16, 185, 129, 0.5)'
+            borderColor: '#717171',
+            background: 'radial-gradient(circle, rgba(113, 113, 113, 0.1) 0%, transparent 70%)',
+            boxShadow: '0 0 40px rgba(113, 113, 113, 0.3)'
           }}
         >
-          <div className="flex items-center justify-center h-full text-green-600 text-2xl font-bold opacity-80">
+          <div className="flex items-center justify-center h-full text-[#717171] text-2xl font-bold opacity-80">
             중앙
           </div>
         </div>

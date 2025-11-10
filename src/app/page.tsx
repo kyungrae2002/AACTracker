@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import AALayout from '@/components/AALayout';
 import SelectionButton from '@/components/SelectionButton';
+import CompletionModal from '@/components/CompletionModal';
 import { categories, subjects, predicates, buildSentence, WordOption } from '@/data/wordData';
 import { getEnhancedSentence } from '@/lib/openai';
 import { useRegisterIrisHandlers } from '@/contexts/IrisTrackerContext';
@@ -23,6 +24,7 @@ export default function MainPage() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isQuestionMode, setIsQuestionMode] = useState<boolean>(false);
   const [speechInitialized, setSpeechInitialized] = useState(false);
+  const [showCompletionModal, setShowCompletionModal] = useState<boolean>(false);
 
   // 현재 선택된 버튼 인덱스 (zone 기반 선택)
   const [selectedButtonIndex, setSelectedButtonIndex] = useState(0);
@@ -208,7 +210,45 @@ export default function MainPage() {
     }
   }, []);
 
-  // 선택 초기화
+  // 단계별 뒤로가기
+  const handleBack = useCallback(() => {
+    // 음성 중지 (안전하게)
+    try {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    } catch (error) {
+      console.warn('⚠️ 음성 중지 실패:', error);
+    }
+
+    // 현재 단계에 따라 이전 단계로 이동
+    if (currentStep === 'predicate') {
+      // 서술어 선택 중 → 주어 선택으로
+      setCurrentStep('subject');
+      setSelectedPredicate('');
+      setFinalSentence('');
+      setIsGenerating(false);
+    } else if (currentStep === 'subject') {
+      // 주어 선택 중 → 카테고리 선택으로
+      setCurrentStep('category');
+      setSelectedSubject('');
+      setIsQuestionMode(false);
+    } else {
+      // 카테고리 선택 중 → 모든 것 초기화 (처음으로)
+      setCurrentStep('category');
+      setSelectedCategory('');
+      setSelectedSubject('');
+      setSelectedPredicate('');
+      setFinalSentence('');
+      setIsGenerating(false);
+      setIsQuestionMode(false);
+    }
+
+    setCurrentPage(0);
+    setSelectedButtonIndex(0); // 첫 번째 버튼으로 리셋
+  }, [currentStep]);
+
+  // 전체 초기화 (필요한 경우를 위해 유지)
   const resetSelection = useCallback(() => {
     // 음성 중지 (안전하게)
     try {
@@ -283,7 +323,8 @@ export default function MainPage() {
             // 음성 출력
             speakSentence(enhanced);
 
-            setTimeout(resetSelection, 3000);
+            // 모달 표시 (3초 후 자동 리셋 대신)
+            setShowCompletionModal(true);
           })
           .catch((error) => {
             console.error('GPT 문장 생성 실패:', error);
@@ -292,7 +333,8 @@ export default function MainPage() {
             // 에러 시에도 원본 문장 음성 출력
             speakSentence(originalSentence);
 
-            setTimeout(resetSelection, 3000);
+            // 모달 표시 (3초 후 자동 리셋 대신)
+            setShowCompletionModal(true);
           });
         break;
     }
@@ -401,11 +443,22 @@ export default function MainPage() {
       top: topPosition,
       gap: `${gap}px`,
       buttonWidth: buttonWidth,
+      leftNumber: leftPosition,
+      totalWidthNumber: totalWidth,
     };
   }, [windowSize, getCurrentPageOptions, showNextButton, isDesktop, currentStep]);
 
-  // 긴 깜빡임 핸들러 (현재 선택된 버튼 클릭)
+  // 긴 깜빡임 핸들러 (현재 선택된 버튼 클릭 또는 모달에서 처음으로 돌아가기)
   const handleLongBlink = useCallback(() => {
+    // 모달이 표시 중일 때: 처음 화면으로 돌아가기
+    if (showCompletionModal) {
+      console.log('🔄 긴 깜빡임으로 처음 화면으로 돌아갑니다');
+      setShowCompletionModal(false);
+      resetSelection();
+      return;
+    }
+
+    // 일반 상태: 현재 선택된 버튼 클릭
     const currentOptions = getCurrentPageOptions();
     let allButtons: WordOption[];
 
@@ -428,13 +481,13 @@ export default function MainPage() {
       console.log(`✅ 긴 깜빡임으로 버튼 선택: ${selectedButton.label} (ID: ${selectedButton.id})`);
       handleSelection(selectedButton.id);
     }
-  }, [getCurrentPageOptions, currentStep, showNextButton, selectedButtonIndex, handleSelection]);
+  }, [showCompletionModal, getCurrentPageOptions, currentStep, showNextButton, selectedButtonIndex, handleSelection, resetSelection]);
 
   // 짧은 깜빡임 여러 번 핸들러 (뒤로가기)
   const handleDoubleBlink = useCallback(() => {
     console.log('🔙 짧은 깜빡임 여러 번으로 뒤로가기 실행');
-    resetSelection();
-  }, [resetSelection]);
+    handleBack();
+  }, [handleBack]);
 
   // IrisTracker 핸들러를 Context에 등록
   const irisHandlers = useMemo(() => ({
@@ -452,11 +505,19 @@ export default function MainPage() {
 
   return (
     <>
+      {/* 문장 완성 모달 */}
+      <CompletionModal
+        isVisible={showCompletionModal}
+        sentence={finalSentence || currentSentence}
+      />
+
       <AALayout
         title={currentStep === 'category' ? '상황 선택' : currentStep === 'subject' ? '주어 선택' : '서술어 선택'}
         outputText={currentSentence}
         isDesktop={isDesktop}
-        onBack={resetSelection}
+        onBack={handleBack}
+        buttonContainerLeft={buttonContainerStyle.leftNumber}
+        buttonContainerWidth={buttonContainerStyle.totalWidthNumber}
       >
         <div
           className="absolute flex"
