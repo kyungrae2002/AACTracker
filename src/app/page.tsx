@@ -510,8 +510,8 @@ export default function MainPage() {
     const gap = 14;
     const totalWidth = buttonCount * buttonWidth + (buttonCount - 1) * gap;
     const leftPosition = Math.max(56, (screenWidth - totalWidth) / 2);
-    // 프로그레스 바 아래에 배치 (150px 상단 버튼 + 프로그레스 바 높이 + 여백)
-    const topPosition = '250px';
+    // 상단 버튼(40px + 80px) 아래 10px 간격으로 배치
+    const topPosition = '145px';
 
     return {
       left: `${leftPosition}px`,
