@@ -4,16 +4,16 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import AALayout from '@/components/AALayout';
 import SelectionButton from '@/components/SelectionButton';
 import CompletionModal from '@/components/CompletionModal';
-import ProgressBar from '@/components/ProgressBar';
-import { categories, coreWords, predicates, buildSentence, WordOption } from '@/data/wordData';
-import { getEnhancedSentence } from '@/lib/openai';
+import { categories, subjects, coreWords, predicates, buildSentence, WordOption } from '@/data/wordData';
 import { useRegisterIrisHandlers } from '@/contexts/IrisTrackerContext';
+import { getEnhancedSentence } from '@/services/gptService';
 
-export type SelectionStep = 'category' | 'coreWord' | 'predicate';
+export type SelectionStep = 'category' | 'subject' | 'coreWord' | 'predicate';
 
 export default function MainPage() {
   const [currentStep, setCurrentStep] = useState<SelectionStep>('category');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedSubject, setSelectedSubject] = useState<string>('');
   const [selectedCoreWord, setSelectedCoreWord] = useState<string>('');
   const [selectedPredicate, setSelectedPredicate] = useState<string>('');
   const [isDesktop, setIsDesktop] = useState(false);
@@ -30,6 +30,12 @@ export default function MainPage() {
 
   // 현재 선택된 버튼 인덱스 (zone 기반 선택)
   const [selectedButtonIndex, setSelectedButtonIndex] = useState(0);
+
+  // showCompletionModal state와 ref를 동기화
+  useEffect(() => {
+    showCompletionModalRef.current = showCompletionModal;
+    console.log('🔄 showCompletionModal 상태 변경:', showCompletionModal);
+  }, [showCompletionModal]);
 
   const buttonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
 
@@ -126,6 +132,8 @@ export default function MainPage() {
     switch (currentStep) {
       case 'category':
         return categories.slice(0, 4);
+      case 'subject':
+        return subjects;
       case 'coreWord':
         return coreWords[selectedCategory] || [];
       case 'predicate':
@@ -303,13 +311,18 @@ export default function MainPage() {
       setFinalSentence('');
       setIsGenerating(false);
     } else if (currentStep === 'coreWord') {
-      // 핵심 단어 선택 중 → 카테고리 선택으로
-      setCurrentStep('category');
+      // 핵심 단어 선택 중 → 주어 선택으로
+      setCurrentStep('subject');
       setSelectedCoreWord('');
+    } else if (currentStep === 'subject') {
+      // 주어 선택 중 → 카테고리 선택으로
+      setCurrentStep('category');
+      setSelectedSubject('');
     } else {
       // 카테고리 선택 중 → 모든 것 초기화 (처음으로)
       setCurrentStep('category');
       setSelectedCategory('');
+      setSelectedSubject('');
       setSelectedCoreWord('');
       setSelectedPredicate('');
       setFinalSentence('');
@@ -322,6 +335,8 @@ export default function MainPage() {
 
   // 전체 초기화 (필요한 경우를 위해 유지)
   const resetSelection = useCallback(() => {
+    console.log('🔄 resetSelection 호출됨');
+
     // 음성 중지 (안전하게)
     try {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -331,14 +346,21 @@ export default function MainPage() {
       console.warn('⚠️ 음성 중지 실패:', error);
     }
 
+    // 모달 상태 완전히 초기화
+    setShowCompletionModal(false);
+    showCompletionModalRef.current = false;
+
     setCurrentStep('category');
     setSelectedCategory('');
+    setSelectedSubject('');
     setSelectedCoreWord('');
     setSelectedPredicate('');
     setCurrentPage(0);
     setFinalSentence('');
     setIsGenerating(false);
     setSelectedButtonIndex(0); // 첫 번째 버튼으로 리셋
+
+    console.log('✅ resetSelection 완료 - 모든 상태 초기화됨');
   }, []);
 
   // 선택 처리 함수
@@ -353,6 +375,13 @@ export default function MainPage() {
     switch (currentStep) {
       case 'category':
         setSelectedCategory(buttonId);
+        setCurrentStep('subject');
+        setCurrentPage(0);
+        setSelectedButtonIndex(0); // 첫 번째 버튼으로 리셋
+        break;
+
+      case 'subject':
+        setSelectedSubject(buttonId);
         setCurrentStep('coreWord');
         setCurrentPage(0);
         setSelectedButtonIndex(0); // 첫 번째 버튼으로 리셋
@@ -366,43 +395,38 @@ export default function MainPage() {
         break;
 
       case 'predicate':
-        // GPT API를 통해 문장 개선
-        const coreWordLabel = coreWords[selectedCategory]?.find(c => c.id === selectedCoreWord)?.label || '';
-        const predicateLabel = predicates[`${selectedCategory}_${selectedCoreWord}`]?.find(p => p.id === buttonId)?.label || '';
-        let originalSentence = buildSentence(selectedCategory, selectedCoreWord, buttonId);
+        // 문장 생성
+        const originalSentence = buildSentence(selectedCategory, selectedSubject, selectedCoreWord, buttonId);
+        const isQuestion = selectedSubject === 'question';
 
-        // 즉시 원본 문장 표시
+        // 즉시 원본 문장 표시 및 생성 중 상태 설정
         setFinalSentence(originalSentence);
         setIsGenerating(true);
         setSelectedPredicate(buttonId);
 
-        // GPT API 호출
-        getEnhancedSentence(coreWordLabel, predicateLabel, selectedCategory, originalSentence, false)
-          .then((enhanced) => {
-            setFinalSentence(enhanced);
-            setIsGenerating(false);
+        // GPT로 문장 개선 (질문 여부와 말투 정보 포함)
+        getEnhancedSentence(originalSentence, isQuestion, 'casual').then((enhancedSentence) => {
+          setFinalSentence(enhancedSentence);
+          setIsGenerating(false);
 
-            // 음성 출력
-            speakSentence(enhanced);
+          // 개선된 문장으로 음성 출력
+          speakSentence(enhancedSentence);
 
-            // 모달 표시
-            setShowCompletionModal(true);
-            showCompletionModalRef.current = true;
-          })
-          .catch((error) => {
-            console.error('GPT 문장 생성 실패:', error);
-            setIsGenerating(false);
+          // 모달 표시
+          setShowCompletionModal(true);
+          showCompletionModalRef.current = true;
+        }).catch((error) => {
+          console.error('문장 생성 오류:', error);
+          setIsGenerating(false);
 
-            // 에러 시에도 원본 문장 음성 출력
-            speakSentence(originalSentence);
-
-            // 모달 표시
-            setShowCompletionModal(true);
-            showCompletionModalRef.current = true;
-          });
+          // 오류 시 원본 문장으로 진행
+          speakSentence(originalSentence);
+          setShowCompletionModal(true);
+          showCompletionModalRef.current = true;
+        });
         break;
     }
-  }, [currentStep, currentPage, getAllOptions, selectedCategory, selectedCoreWord, speakSentence]);
+  }, [currentStep, currentPage, getAllOptions, selectedCategory, selectedSubject, selectedCoreWord, speakSentence]);
 
   // Zone 기반 버튼 이동 핸들러 (기존 방식)
   const handleZoneChange = useCallback((direction: 'left' | 'right') => {
@@ -417,10 +441,9 @@ export default function MainPage() {
 
     setSelectedButtonIndex((prev) => {
       const currentOptions = getCurrentPageOptions();
-      let allButtons: WordOption[];
 
       // 다시 버튼 표시 여부에 따라 버튼 배열 구성
-      allButtons = showNextButton()
+      const allButtons = showNextButton()
         ? [...currentOptions, { id: 'next_page', label: '다시' }]
         : currentOptions;
 
@@ -455,9 +478,9 @@ export default function MainPage() {
     if (finalSentence) {
       return finalSentence;
     }
-    const sentence = buildSentence(selectedCategory, selectedCoreWord, selectedPredicate);
+    const sentence = buildSentence(selectedCategory, selectedSubject, selectedCoreWord, selectedPredicate);
     return sentence;
-  }, [selectedCategory, selectedCoreWord, selectedPredicate, finalSentence, isGenerating]);
+  }, [selectedCategory, selectedSubject, selectedCoreWord, selectedPredicate, finalSentence, isGenerating]);
 
   // 버튼 레이아웃 스타일
   const buttonContainerStyle = useMemo(() => {
@@ -502,11 +525,10 @@ export default function MainPage() {
 
   // 긴 깜빡임 핸들러 (현재 선택된 버튼 클릭 또는 모달에서 처음으로 돌아가기)
   const handleLongBlink = useCallback(() => {
-    const isModalVisible = showCompletionModalRef.current;
-    console.log('👁️ handleLongBlink 호출됨, showCompletionModal:', isModalVisible);
+    console.log('👁️ handleLongBlink 호출됨, showCompletionModal state:', showCompletionModal, ', ref:', showCompletionModalRef.current);
 
     // 모달이 표시 중일 때: 처음 화면으로 돌아가기
-    if (isModalVisible) {
+    if (showCompletionModal) {
       console.log('🔄 [모달] 긴 깜빡임으로 처음 화면으로 돌아갑니다');
       setShowCompletionModal(false);
       showCompletionModalRef.current = false;
@@ -516,10 +538,9 @@ export default function MainPage() {
 
     // 일반 상태: 현재 선택된 버튼 클릭
     const currentOptions = getCurrentPageOptions();
-    let allButtons: WordOption[];
 
     // 다시 버튼 표시 여부에 따라 버튼 배열 구성
-    allButtons = showNextButton()
+    const allButtons = showNextButton()
       ? [...currentOptions, { id: 'next_page', label: '다시' }]
       : currentOptions;
 
@@ -533,7 +554,7 @@ export default function MainPage() {
       console.log(`✅ 긴 깜빡임으로 버튼 선택: ${selectedButton.label} (ID: ${selectedButton.id})`);
       handleSelection(selectedButton.id);
     }
-  }, [getCurrentPageOptions, currentStep, showNextButton, selectedButtonIndex, handleSelection, resetSelection]);
+  }, [showCompletionModal, getCurrentPageOptions, currentStep, showNextButton, selectedButtonIndex, handleSelection, resetSelection]);
 
   // 짧은 깜빡임 여러 번 핸들러 (뒤로가기)
   const handleDoubleBlink = useCallback(() => {
@@ -557,13 +578,6 @@ export default function MainPage() {
 
   return (
     <>
-      {/* 진행 상황 바 */}
-      <ProgressBar
-        currentStep={currentStep}
-        currentPage={currentStep === 'predicate' ? currentPage : 0}
-        isCompleted={showCompletionModal || !!finalSentence}
-      />
-
       {/* 문장 완성 모달 */}
       <CompletionModal
         isVisible={showCompletionModal}
@@ -573,6 +587,7 @@ export default function MainPage() {
       <AALayout
         title={
           currentStep === 'category' ? '상황 선택' :
+          currentStep === 'subject' ? '주어 선택' :
           currentStep === 'coreWord' ? '핵심 단어 선택' :
           currentPage > 0 ? '단어 선택' : '서술어 선택'
         }

@@ -16,79 +16,88 @@ const getOpenAI = () => {
   return openai;
 };
 
+const SYSTEM_MESSAGE = `너는 문장 변환 AI다. 너의 유일한 임무는 입력된 정보를 실제 대화에서 사용하는 자연스러운 한국어 문장으로 변환하는 것이다.
+
+## 핵심 규칙
+1. **출력:** 변환된 문장 **하나만** 출력한다. 어떤 설명도, 인사도, 따옴표도 붙이지 않는다.
+2. **간결성:** 문장을 절대 길게 만들지 않는다. 불필요한 수식어, 부사(예: '매우', '정말')를 억제하고 핵심만 말한다.
+3. **주어 생략:** '나', '너' 같은 주어는 문맥상 불필요하면 생략한다.
+4. **말투 준수:** 아래 [말투별 변환 규칙]을 **반드시** 따른다.`;
+
 // 프롬프트 템플릿
 const PROMPT_TEMPLATES = {
-  base: (subject: string, predicate: string, category: string, originalSentence: string) => `
-너는 말 못하는 사람들이 자연스럽게 대화할 수 있도록 도와주는 전문가야.
-기계 같은 문장이 아니라, 실제로 사람들이 일상에서 쓰는 말투로 바꿔줘.
-대화할 때 너가 쓰는 말투처럼 자연스럽고 뭔가 정보를 전달하는 것이 아닌 친구나 가족과 대화할 때 쓰는 편한 말투로 바꿔줘.
+  casual: (originalSentence: string, isQuestion: boolean) => `
+## [말투별 변환 규칙]
 
-입력된 정보:
-- 주어: ${subject}
-- 서술어: ${predicate}
-- 카테고리: ${category}
-- 만들어진 문장: ${originalSentence}
+### "politeness: casual" (반말 모드)
+* **목표:** 친구, 가족에게 말하는 편안한 반말.
+* **금지:** 절대로 '해요', '입니다', '-시-' 같은 존댓말을 쓰지 않는다.
 
-어떻게 바꿔줘:
-1. 딱딱한 표현은 부드럽게 풀어서 말해줘
-   예) "나 물 필요해"
-   예) "되게 기분 좋아 보여"
+**예시 (평서문):**
+- 입력: { "subject": "나", "predicate": "배고프다", "politeness": "casual" }
+- 출력: 배고파
+- 입력: { "subject": "나", "predicate": "기쁘다", "politeness": "casual" }
+- 출력: 기분 좋다
 
-2. 존댓말 골라줘
-   - 부탁할 때는 부드럽게 ("~줄래?", "~해줄 수 있어?")
-   - 감정 표현은 솔직하게 ("진짜 화나", "너무 좋아")
+**예시 (요청):**
+- 입력: { "subject": "나", "predicate": "물 필요하다", "politeness": "casual" }
+- 출력: 물 좀 줘
+- 입력: { "subject": "너", "predicate": "TV 켜다", "politeness": "casual" }
+- 출력: TV 좀 켜줘
 
-3. 주어는 자연스러우면 빼도 돼
-   예) "나 배고파" → "배고파", "배고픈데"
+**예시 (질문):**
+- 입력: { "subject": "너", "predicate": "기쁘다", "politeness": "casual", "type": "question" }
+- 출력: 기뻐?
+- 입력: { "subject": "너", "predicate": "물 필요하다", "politeness": "casual", "type": "question" }
+- 출력: 물 마실래?
 
-4. 실제 대화하듯이 짧고 간결하게
+---
 
-5. 최대한 짧고 간결하게
+입력된 문장: "${originalSentence}"
+형식: ${isQuestion ? '질문' : '평서문/요청'}
 
-중요: '자연스럽게', '다시' 같은 단어 뒤에 붙이지 마!, 길게 말하지마!, 장황하게 설명하지마!, 문장을 길게 만들지마!, 불필요한 수식어 넣지마!`,
+위 규칙에 따라 변환된 문장만 출력하세요.`,
 
-  question: (subject: string, predicate: string, category: string, originalSentence: string) => `
-말 못하는 사람이 질문할 때 자연스럽게 들리도록 도와줘.
-사람들이 실제로 쓰는 질문 말투로 바꿔줘.
+  formal: (originalSentence: string, isQuestion: boolean) => `
+## [말투별 변환 규칙]
 
-입력된 정보:
-- 주어: ${subject}
-- 서술어: ${predicate}
-- 카테고리: ${category}
-- 만들어진 문장: ${originalSentence}
-- 형식: 질문
+### "politeness: formal" (존댓말 모드)
+* **목표:** 의료진, 간병인, 처음 보는 사람에게 말하는 부드러운 존댓말 ('-요' 체).
+* **금지:** '합니다', '-ㅂ니다' 같은 딱딱한 격식체를 쓰지 않는다.
 
-어떻게 바꿔줘:
-1. 짧고 간결한 질문으로
-   예) "너 기뻐?" → "기뻐?", "기분 좋아?"
-   예) "나 배고파?" → "배고파?", "뭐 먹을까?"
+**예시 (평서문):**
+- 입력: { "subject": "나", "predicate": "배고프다", "politeness": "formal" }
+- 출력: 배고파요
+- 입력: { "subject": "나", "predicate": "기쁘다", "politeness": "formal" }
+- 출력: 기분 좋아요
 
-2. 상황별로 자연스럽게
-   - 감정 물어볼 때: "괜찮아?", "어때?", "힘들어?"
-   - 상태 확인할 때: "피곤해?", "아파?", "졸려?"
-   - 무언가 필요할 때: "물 줄래?", "이거 필요해?"
+**예시 (요청):**
+- 입력: { "subject": "나", "predicate": "물 필요하다", "politeness": "formal" }
+- 출력: 물 좀 주세요
+- 입력: { "subject": "너", "predicate": "TV 켜다", "politeness": "formal" }
+- 출력: TV 좀 켜주실 수 있어요?
 
-3. 주어는 빼도 돼
-   예) "너 물 필요해?" → "물 필요해?", "물 마실래?"
+**예시 (질문):**
+- 입력: { "subject": "너", "predicate": "기쁘다", "politeness": "formal", "type": "question" }
+- 출력: 기분 좋으세요?
+- 입력: { "subject": "너", "predicate": "물 필요하다", "politeness": "formal", "type": "question" }
+- 출력: 물 필요하세요?
 
-4. 실제 대화처럼 짧게
+---
 
-중요: '자연스럽게', '다시' 같은 단어 붙이지 마!`
+입력된 문장: "${originalSentence}"
+형식: ${isQuestion ? '질문' : '평서문/요청'}
+
+위 규칙에 따라 변환된 문장만 출력하세요.`
 };
-
-const SYSTEM_MESSAGE = `너는 말하기 어려운 사람들이 일상 대화를 자연스럽게 할 수 있도록 돕는 전문가야.
-기계 같은 딱딱한 문장이 아니라, 실제 사람들이 친구나 가족과 대화할 때 쓰는 편한 말투로 바꿔줘.
-짧고 간결하게, 그리고 상황에 맞게 존댓말이나 반말을 적절히 섞어서 써줘.`;
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
-      subject = '',
-      predicate = '',
-      category = '',
       originalSentence = '',
-      isQuestion = false
+      isQuestion = false,
+      politeness = 'casual' // 'casual' 또는 'formal'
     } = body;
 
     // API 키 확인
@@ -107,10 +116,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 프롬프트 선택
-    const prompt = isQuestion
-      ? PROMPT_TEMPLATES.question(subject, predicate, category, originalSentence)
-      : PROMPT_TEMPLATES.base(subject, predicate, category, originalSentence);
+    // 프롬프트 선택 (말투에 따라)
+    const prompt = politeness === 'formal'
+      ? PROMPT_TEMPLATES.formal(originalSentence, isQuestion)
+      : PROMPT_TEMPLATES.casual(originalSentence, isQuestion);
+
+    // 디버깅: 프롬프트 로깅
+    console.log('====== GPT 요청 디버깅 ======');
+    console.log('입력 문장:', originalSentence);
+    console.log('질문 여부:', isQuestion);
+    console.log('말투:', politeness);
+    console.log('생성된 프롬프트:\n', prompt);
+    console.log('==========================');
 
     // OpenAI API 호출
     const client = getOpenAI();
@@ -127,11 +144,17 @@ export async function POST(request: NextRequest) {
         { role: 'system', content: SYSTEM_MESSAGE },
         { role: 'user', content: prompt }
       ],
-      temperature: 0.8,
-      max_tokens: 100,
+      temperature: 0.7,
+      max_tokens: 50,
     });
 
     const enhancedSentence = response.choices[0]?.message?.content?.trim() || originalSentence;
+
+    // 디버깅: GPT 응답 로깅
+    console.log('====== GPT 응답 디버깅 ======');
+    console.log('GPT 응답:', enhancedSentence);
+    console.log('원본 문장:', originalSentence);
+    console.log('==========================');
 
     return NextResponse.json({ sentence: enhancedSentence });
   } catch (error) {

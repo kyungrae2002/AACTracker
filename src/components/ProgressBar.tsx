@@ -9,7 +9,7 @@ export interface ProgressBarProps {
   isCompleted?: boolean;
 }
 
-const ProgressBar: React.FC<ProgressBarProps> = ({ currentStep, currentPage = 0, isCompleted = false }) => {
+const ProgressBar: React.FC<ProgressBarProps> = ({ currentStep, isCompleted = false }) => {
   // 단계별 진행률 계산 (4단계: 상황, 핵심 단어, 서술어, 완료)
   const getProgress = () => {
     // 문장이 완성되었으면 100%

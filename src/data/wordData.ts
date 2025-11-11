@@ -14,7 +14,16 @@ export const categories: WordOption[] = [
   { id: 'object', label: '사물' },
 ];
 
-// 2단계: 핵심 단어 (각 상황별 세부 분류)
+// 2단계: 주어
+export const subjects: WordOption[] = [
+  { id: 'i', label: '나' },
+  { id: 'you', label: '너' },
+  { id: 'we', label: '우리' },
+  { id: 'you_plural', label: '너희' },
+  { id: 'question', label: '질문' },
+];
+
+// 3단계: 핵심 단어 (각 상황별 세부 분류)
 export const coreWords: Record<string, WordOption[]> = {
   // 인사 상황의 핵심 단어
   greeting: [
@@ -54,7 +63,7 @@ export const coreWords: Record<string, WordOption[]> = {
   ],
 };
 
-// 3단계: 서술어 (각 핵심 단어에 맞는 동사/형용사)
+// 4단계: 서술어 (각 핵심 단어에 맞는 동사/형용사)
 export const predicates: Record<string, WordOption[]> = {
   // 인사 - 기본
   'greeting_basic': [
@@ -228,16 +237,22 @@ export const predicates: Record<string, WordOption[]> = {
   ],
 };
 
-// 문장 생성 함수 (새로운 3단계 플로우: 상황 → 핵심 단어 → 서술어)
+// 문장 생성 함수 (새로운 4단계 플로우: 상황 → 주어 → 핵심 단어 → 서술어)
 export function buildSentence(
   selectedCategory?: string,
+  selectedSubject?: string,
   selectedCoreWord?: string,
   selectedPredicate?: string
 ): string {
   // 빈 값 처리
-  if (!selectedCategory && !selectedCoreWord && !selectedPredicate) {
+  if (!selectedCategory && !selectedSubject && !selectedCoreWord && !selectedPredicate) {
     return '';
   }
+
+  // 주어 레이블 찾기
+  const subjectLabel = selectedSubject
+    ? subjects.find(s => s.id === selectedSubject)?.label || ''
+    : '';
 
   // 핵심 단어 레이블 찾기
   const coreWordLabel = (selectedCoreWord && selectedCategory)
@@ -250,14 +265,27 @@ export function buildSentence(
     : '';
 
   // 문장 조합
-  if (coreWordLabel && predicateLabel) {
-    // 완전한 문장: "핵심단어 서술어" (예: "기분 좋다", "물 마시다")
-    return `${coreWordLabel} ${predicateLabel}`;
-  } else if (coreWordLabel) {
-    // 핵심 단어만 선택된 경우
-    return coreWordLabel;
+  let sentence = '';
+
+  // 주어가 있는 경우
+  if (subjectLabel && subjectLabel !== '질문') {
+    sentence = subjectLabel;
   }
 
-  // 카테고리만 선택된 경우 빈 문자열 반환
-  return '';
+  // 핵심 단어 추가
+  if (coreWordLabel) {
+    sentence = sentence ? `${sentence} ${coreWordLabel}` : coreWordLabel;
+  }
+
+  // 서술어 추가
+  if (predicateLabel) {
+    sentence = sentence ? `${sentence} ${predicateLabel}` : predicateLabel;
+  }
+
+  // 질문 주어인 경우 물음표 추가
+  if (selectedSubject === 'question' && sentence) {
+    sentence = `${sentence}?`;
+  }
+
+  return sentence;
 }
