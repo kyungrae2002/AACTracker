@@ -93,7 +93,21 @@ const PROMPT_TEMPLATES = {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    // 요청 본문 파싱 (빈 요청 처리)
+    let body: any = {};
+    try {
+      const text = await request.text();
+      if (text) {
+        body = JSON.parse(text);
+      }
+    } catch (parseError) {
+      console.error('요청 본문 파싱 오류:', parseError);
+      return NextResponse.json(
+        { error: 'Invalid request body', sentence: '' },
+        { status: 400 }
+      );
+    }
+
     const {
       originalSentence = '',
       isQuestion = false,
@@ -101,7 +115,9 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // API 키 확인
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your-api-key-here') {
+      console.warn('⚠️ OpenAI API 키가 설정되지 않았습니다. 원본 문장을 반환합니다.');
+      console.warn('→ .env.local 파일에 OPENAI_API_KEY를 설정하세요.');
       return NextResponse.json(
         { error: 'OpenAI API key not configured', sentence: originalSentence },
         { status: 200 }
@@ -160,19 +176,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error enhancing sentence:', error);
 
-    // 에러 발생 시에도 원본 문장 반환 시도
-    try {
-      const body = await request.json().catch(() => ({}));
-      const originalSentence = body.originalSentence || '';
-      return NextResponse.json(
-        { error: 'Failed to enhance sentence', sentence: originalSentence },
-        { status: 200 }
-      );
-    } catch {
-      return NextResponse.json(
-        { error: 'Failed to enhance sentence', sentence: '' },
-        { status: 200 }
-      );
-    }
+    // 에러 발생 시 원본 문장 반환
+    return NextResponse.json(
+      { error: 'Failed to enhance sentence', sentence: '' },
+      { status: 200 }
+    );
   }
 }

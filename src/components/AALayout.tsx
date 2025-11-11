@@ -46,8 +46,15 @@ export default function AALayout({
 
   return (
     <div className="relative w-screen h-screen bg-[#FFF2DB] overflow-hidden">
+      {/* 중앙 영역 배경 (347:677:347 비율) */}
+      <div className="absolute inset-0 flex pointer-events-none" style={{ zIndex: 1 }}>
+        <div style={{ width: '25.3%' }}></div>
+        <div style={{ width: '49.4%', background: '#FFE7BD' }}></div>
+        <div style={{ width: '25.3%' }}></div>
+      </div>
+
       {/* 배경 장식 */}
-      <div className="absolute inset-0 opacity-30 pointer-events-none">
+      <div className="absolute inset-0 opacity-30 pointer-events-none" style={{ zIndex: 2 }}>
         {/* 왼쪽 원형 */}
         <div className="absolute w-[662px] h-[662px] left-[371px] top-[74px] bg-[rgba(113,113,113,0.15)] rounded-full" />
         {/* 왼쪽 타원형 */}
@@ -63,13 +70,14 @@ export default function AALayout({
       {/* 좌측 상단: 이전 버튼 */}
       <button
         onClick={onBack}
-        className="absolute flex items-center justify-center gap-[10px] bg-[#212121] rounded-[100px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] transition-all hover:bg-[#3A3A3A] z-10"
+        className="absolute flex items-center justify-center gap-[10px] bg-[#212121] rounded-[100px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] transition-all hover:bg-[#3A3A3A]"
         style={{
           width: '167px',
           height: '80px',
           padding: '20px 35px',
           left: '56px',
           top: '40px',
+          zIndex: 10,
         }}
       >
         <img
@@ -87,13 +95,14 @@ export default function AALayout({
 
       {/* 우측 상단: 문장 버튼 */}
       <button
-        className="absolute flex items-center justify-center gap-[10px] bg-[#FE6433] rounded-[100px] transition-all hover:bg-[#FF7544] z-10"
+        className="absolute flex items-center justify-center gap-[10px] bg-[#FE6433] rounded-[100px] transition-all hover:bg-[#FF7544]"
         style={{
           width: '167px',
           height: '80px',
           padding: '20px 35px',
           right: '56px',
           top: '40px',
+          zIndex: 10,
         }}
       >
         <img
@@ -112,11 +121,12 @@ export default function AALayout({
       {/* 중앙 상단: 제목 */}
       {title && (
         <div
-          className="absolute left-1/2 -translate-x-1/2 z-10 font-['NanumSquareRound'] font-bold text-black text-center"
+          className="absolute left-1/2 -translate-x-1/2 font-['NanumSquareRound'] font-bold text-black text-center"
           style={{
             top: '55px',
             fontSize: '32px',
             lineHeight: '36px',
+            zIndex: 10,
           }}
         >
           {title}
@@ -124,7 +134,9 @@ export default function AALayout({
       )}
 
       {/* 메인 컨텐츠 영역 */}
-      {children}
+      <div style={{ position: 'relative', zIndex: 5 }}>
+        {children}
+      </div>
 
       {/* 하단 텍스트 출력 영역 */}
       <div
@@ -138,6 +150,7 @@ export default function AALayout({
           height: '140px',
           padding: '20px 50px',
           borderRadius: '32px',
+          zIndex: 10,
         }}
       >
         {/* 상단: Group 아이콘 + 텍스트 */}

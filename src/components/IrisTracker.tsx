@@ -95,8 +95,7 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
   const FRAME_SKIP = 2; // 2프레임마다 1번만 처리 (성능 최적화)
   const MAX_POSITION_CHANGE = 70; // 50 → 70 (더 빠른 이동 허용)
 
-  // 중앙 중력 관련 상수
-  const CENTER_GRAVITY_RADIUS = 0.2; // 화면 너비의 20% 영역에서 중력 작용
+  // 영역별 중력 관련 상수
   const GRAVITY_STRENGTH = 2.6; // 중력 강도 (0~1, 높을수록 강함) - 2배로 증가
 
   // 눈 깜빡임 감지 상수
@@ -362,33 +361,30 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
     return { x: ratioX, y: ratioY };
   };
 
-  // Zone 감지 함수 (중앙 원 기준으로 변경)
+  // Zone 감지 함수 (화면 347:677:347 비율 기준)
   const detectZone = useCallback((position: Position) => {
     const now = Date.now();
     const screenWidth = window.innerWidth;
-    const screenCenterX = screenWidth / 2;
-    const gravityRadius = screenWidth * CENTER_GRAVITY_RADIUS;
+    const totalRatio = 347 + 677 + 347; // 1371
+    const leftWidth = (screenWidth * 347) / totalRatio;
+    const centerWidth = (screenWidth * 677) / totalRatio;
 
-    // 중앙으로부터의 거리 계산
-    const distanceFromCenter = position.x - screenCenterX;
-    const absDistance = Math.abs(distanceFromCenter);
-
-    // 현재 zone 계산 (중앙 원 기준)
+    // 현재 zone 계산 (347:677:347 비율)
     let newZone: 'left' | 'center' | 'right';
-    if (absDistance <= gravityRadius) {
-      // 중앙 원 안에 있음
-      newZone = 'center';
-    } else if (distanceFromCenter < 0) {
-      // 중앙 원 왼쪽 밖
+    if (position.x < leftWidth) {
+      // 왼쪽 영역
       newZone = 'left';
+    } else if (position.x < leftWidth + centerWidth) {
+      // 중앙 영역
+      newZone = 'center';
     } else {
-      // 중앙 원 오른쪽 밖
+      // 오른쪽 영역
       newZone = 'right';
     }
 
     const prevZone = currentZoneRef.current;
 
-    // Zone이 변경되었고 center(원 안)로 돌아왔을 때
+    // Zone이 변경되었고 center로 돌아왔을 때
     if (prevZone !== 'center' && newZone === 'center') {
       // 쿨다운 체크
       if (now - lastZoneChangeRef.current > ZONE_CHANGE_COOLDOWN) {
@@ -403,9 +399,9 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
     }
 
     currentZoneRef.current = newZone;
-  }, [onZoneChange, ZONE_CHANGE_COOLDOWN, CENTER_GRAVITY_RADIUS]);
+  }, [onZoneChange, ZONE_CHANGE_COOLDOWN]);
 
-  // 커서 업데이트 (화면 하단 절반으로 제한 + 중앙 중력 효과)
+  // 커서 업데이트 (화면 하단 절반으로 제한 + 각 영역별 중력 효과)
   const updateGazeCursor = (position: Position) => {
     if (!gazeCursorRef.current) return;
 
@@ -417,21 +413,44 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
     // X 좌표는 전체 범위 사용
     let constrainedX = Math.max(30, Math.min(window.innerWidth - 30, position.x));
 
-    // 중앙 중력 효과 적용
-    const screenCenterX = window.innerWidth / 2;
-    const distanceFromCenter = Math.abs(constrainedX - screenCenterX);
-    const gravityRadius = window.innerWidth * CENTER_GRAVITY_RADIUS;
+    // 347:677:347 비율로 영역별 중력 효과 적용
+    const screenWidth = window.innerWidth;
+    const totalRatio = 347 + 677 + 347; // 1371
+    const leftWidth = (screenWidth * 347) / totalRatio;
+    const centerWidth = (screenWidth * 677) / totalRatio;
+    const rightWidth = (screenWidth * 347) / totalRatio;
 
-    if (distanceFromCenter < gravityRadius) {
-      // 중앙 근처에서 중력 작용
-      const gravityRatio = distanceFromCenter / gravityRadius; // 0(중앙) ~ 1(경계)
+    // 현재 속한 영역 확인
+    let zoneCenterX: number;
+    let zoneWidth: number;
+    if (constrainedX < leftWidth) {
+      // 왼쪽 영역 중앙
+      zoneCenterX = leftWidth / 2;
+      zoneWidth = leftWidth;
+    } else if (constrainedX < leftWidth + centerWidth) {
+      // 중앙 영역 중앙
+      zoneCenterX = leftWidth + centerWidth / 2;
+      zoneWidth = centerWidth;
+    } else {
+      // 오른쪽 영역 중앙
+      zoneCenterX = leftWidth + centerWidth + rightWidth / 2;
+      zoneWidth = rightWidth;
+    }
+
+    // 해당 영역 중앙으로부터의 거리 계산
+    const distanceFromZoneCenter = Math.abs(constrainedX - zoneCenterX);
+    const gravityRadius = zoneWidth * 0.4; // 각 영역 너비의 40%에서 중력 작용
+
+    if (distanceFromZoneCenter < gravityRadius) {
+      // 해당 영역 중앙 근처에서 중력 작용
+      const gravityRatio = distanceFromZoneCenter / gravityRadius; // 0(중앙) ~ 1(경계)
       const gravityPull = (1 - gravityRatio) * GRAVITY_STRENGTH;
 
-      // 중앙으로 끌어당기기
-      if (constrainedX < screenCenterX) {
-        constrainedX = constrainedX + (screenCenterX - constrainedX) * gravityPull;
+      // 해당 영역 중앙으로 끌어당기기
+      if (constrainedX < zoneCenterX) {
+        constrainedX = constrainedX + (zoneCenterX - constrainedX) * gravityPull;
       } else {
-        constrainedX = constrainedX - (constrainedX - screenCenterX) * gravityPull;
+        constrainedX = constrainedX - (constrainedX - zoneCenterX) * gravityPull;
       }
     }
 
@@ -811,24 +830,6 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
         `
       }} />
 
-      {/* 중앙 원 기준 Zone 시각화 */}
-      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 999998 }}>
-        {/* 중앙 Zone (원) - 중력 영역 */}
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-dashed opacity-40"
-          style={{
-            width: `${CENTER_GRAVITY_RADIUS * 200}vw`,
-            height: `${CENTER_GRAVITY_RADIUS * 200}vw`,
-            borderColor: '#717171',
-            background: 'radial-gradient(circle, rgba(113, 113, 113, 0.1) 0%, transparent 70%)',
-            boxShadow: '0 0 40px rgba(113, 113, 113, 0.3)'
-          }}
-        >
-          <div className="flex items-center justify-center h-full text-[#717171] text-2xl font-bold opacity-80">
-            중앙
-          </div>
-        </div>
-      </div>
     </>
   );
 };
