@@ -468,7 +468,7 @@ export default function MainPage() {
 
       return nextIndex;
     });
-  }, [getCurrentPageOptions, currentStep, showNextButton]);
+  }, [getCurrentPageOptions, showNextButton]);
 
   // 실시간 문장 생성
   const currentSentence = useMemo(() => {
@@ -521,7 +521,7 @@ export default function MainPage() {
       leftNumber: leftPosition,
       totalWidthNumber: totalWidth,
     };
-  }, [windowSize, getCurrentPageOptions, showNextButton, isDesktop, currentStep]);
+  }, [windowSize, getCurrentPageOptions, showNextButton]);
 
   // 긴 깜빡임 핸들러 (현재 선택된 버튼 클릭 또는 모달에서 처음으로 돌아가기)
   const handleLongBlink = useCallback(() => {
@@ -554,7 +554,7 @@ export default function MainPage() {
       console.log(`✅ 긴 깜빡임으로 버튼 선택: ${selectedButton.label} (ID: ${selectedButton.id})`);
       handleSelection(selectedButton.id);
     }
-  }, [showCompletionModal, getCurrentPageOptions, currentStep, showNextButton, selectedButtonIndex, handleSelection, resetSelection]);
+  }, [showCompletionModal, getCurrentPageOptions, showNextButton, selectedButtonIndex, handleSelection, resetSelection]);
 
   // 짧은 깜빡임 여러 번 핸들러 (뒤로가기)
   const handleDoubleBlink = useCallback(() => {
