@@ -91,14 +91,21 @@ const PROMPT_TEMPLATES = {
 위 규칙에 따라 변환된 문장만 출력하세요.`
 };
 
+// 요청 본문 타입 정의
+interface EnhanceSentenceRequest {
+  originalSentence?: string;
+  isQuestion?: boolean;
+  politeness?: 'casual' | 'formal';
+}
+
 export async function POST(request: NextRequest) {
   try {
     // 요청 본문 파싱 (빈 요청 처리)
-    let body: any = {};
+    let body: EnhanceSentenceRequest = {};
     try {
       const text = await request.text();
       if (text) {
-        body = JSON.parse(text);
+        body = JSON.parse(text) as EnhanceSentenceRequest;
       }
     } catch (parseError) {
       console.error('요청 본문 파싱 오류:', parseError);
