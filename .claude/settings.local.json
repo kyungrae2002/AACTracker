@@ -22,7 +22,8 @@
       "Bash(~/Library/Android/sdk/cmdline-tools/latest/bin/avdmanager list:*)",
       "Bash(adb shell:*)",
       "Bash(~/Library/Android/sdk/platform-tools/adb shell wm size)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

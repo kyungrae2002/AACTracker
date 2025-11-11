@@ -60,71 +60,68 @@ export default function AALayout({
         <div className="absolute w-[873px] h-[503px] left-[579px] top-[530px] bg-[rgba(113,113,113,0.15)] transform rotate-[-6.11deg]" />
       </div>
 
-      {/* 상단 영역 */}
-      <div className="absolute left-[56px] right-[56px] top-[40px] z-10">
-        <div className="flex items-start justify-between">
-          {/* 좌측: 이전 */}
-          <div className="flex flex-col gap-2">
-            <button
-              onClick={onBack}
-              className="flex items-center justify-center gap-[10px] bg-[#212121] rounded-[100px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] transition-all hover:bg-[#3A3A3A]"
-              style={{
-                width: '167px',
-                height: '80px',
-                padding: '20px 35px',
-              }}
-            >
-              <img
-                src="/Frame 1171275969.png"
-                alt="back icon"
-                style={{ width: '28px', height: '28px', flexShrink: 0 }}
-              />
-              <span
-                className="font-['NanumSquareRound'] font-bold text-white"
-                style={{ fontSize: '32px', lineHeight: '36px' }}
-              >
-                이전
-              </span>
-            </button>
-          </div>
+      {/* 좌측 상단: 이전 버튼 */}
+      <button
+        onClick={onBack}
+        className="absolute flex items-center justify-center gap-[10px] bg-[#212121] rounded-[100px] shadow-[0px_5px_10px_rgba(0,0,0,0.15)] transition-all hover:bg-[#3A3A3A] z-10"
+        style={{
+          width: '167px',
+          height: '80px',
+          padding: '20px 35px',
+          left: '56px',
+          top: '40px',
+        }}
+      >
+        <img
+          src="/Frame 1171275969.png"
+          alt="back icon"
+          style={{ width: '28px', height: '28px', flexShrink: 0 }}
+        />
+        <span
+          className="font-['NanumSquareRound'] font-bold text-white"
+          style={{ fontSize: '32px', lineHeight: '36px' }}
+        >
+          이전
+        </span>
+      </button>
 
-          {/* 중앙: 제목 */}
-          <h1
-            className="font-['NanumSquareRound'] font-bold text-black"
-            style={{
-              fontSize: style.titleFontSize,
-              lineHeight: style.titleFontSize,
-              marginTop: '15px',
-            }}
-          >
-            {title}
-          </h1>
+      {/* 우측 상단: 문장 버튼 */}
+      <button
+        className="absolute flex items-center justify-center gap-[10px] bg-[#FE6433] rounded-[100px] transition-all hover:bg-[#FF7544] z-10"
+        style={{
+          width: '167px',
+          height: '80px',
+          padding: '20px 35px',
+          right: '56px',
+          top: '40px',
+        }}
+      >
+        <img
+          src="/Vector.png"
+          alt="sentence icon"
+          style={{ width: '28px', height: '28px', flexShrink: 0 }}
+        />
+        <span
+          className="font-['NanumSquareRound'] font-bold text-white"
+          style={{ fontSize: '32px', lineHeight: '36px' }}
+        >
+          문장
+        </span>
+      </button>
 
-          {/* 우측: 문장 */}
-          <div className="flex flex-col gap-2">
-            <button
-              className="flex items-center justify-center gap-[10px] bg-[#FE6433] rounded-[100px] transition-all hover:bg-[#FF7544]"
-              style={{
-                width: '167px',
-                height: '80px',
-                padding: '20px 35px',
-              }}
-            >
-              <img
-                src="/Vector.png"
-                alt="sentence icon"
-                style={{ width: '28px', height: '28px', flexShrink: 0 }}
-              />
-              <span
-                className="font-['NanumSquareRound'] font-bold text-white"
-                style={{ fontSize: '32px', lineHeight: '36px' }}
-              >
-                문장
-              </span>
-            </button>
-          </div>
+      {/* 중앙 상단: 제목 */}
+      {title && (
+        <div
+          className="absolute left-1/2 -translate-x-1/2 z-10 font-['NanumSquareRound'] font-bold text-black text-center"
+          style={{
+            top: '55px',
+            fontSize: '32px',
+            lineHeight: '36px',
+          }}
+        >
+          {title}
         </div>
-      </div>
+      )}
 
       {/* 메인 컨텐츠 영역 */}
       {children}

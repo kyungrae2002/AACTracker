@@ -1,21 +1,29 @@
 'use client';
 
 import React from 'react';
+import type { SelectionStep } from '@/app/page';
 
-interface ProgressBarProps {
-  currentStep: 'category' | 'subject' | 'predicate';
+export interface ProgressBarProps {
+  currentStep: SelectionStep;
+  currentPage?: number;
+  isCompleted?: boolean;
 }
 
-export default function ProgressBar({ currentStep }: ProgressBarProps) {
-  // 단계별 진행률 계산
+const ProgressBar: React.FC<ProgressBarProps> = ({ currentStep, currentPage = 0, isCompleted = false }) => {
+  // 단계별 진행률 계산 (4단계: 상황, 핵심 단어, 서술어, 완료)
   const getProgress = () => {
+    // 문장이 완성되었으면 100%
+    if (isCompleted) {
+      return 100;
+    }
+
     switch (currentStep) {
       case 'category':
         return 0;
-      case 'subject':
-        return 50;
+      case 'coreWord':
+        return 33.33;
       case 'predicate':
-        return 100;
+        return 66.66;
       default:
         return 0;
     }
@@ -23,12 +31,12 @@ export default function ProgressBar({ currentStep }: ProgressBarProps) {
 
   const progress = getProgress();
 
-  // 노드 위치 계산 (0%, 50%, 100%)
-  const nodePositions = [0, 50, 100];
-  const nodeLabels = ['상황', '주어', '서술어'];
+  // 노드 위치 계산 (0%, 33.33%, 66.66%, 100%)
+  const nodePositions = [0, 33.33, 66.66, 100];
+  const nodeLabels = ['상황', '핵심 단어', '서술어', '완료'];
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50" style={{ paddingTop: '13px', paddingBottom: '60px', paddingLeft: '30px', paddingRight: '30px' }}>
+    <div className="fixed left-0 right-0 z-40" style={{ top: '150px', paddingLeft: '56px', paddingRight: '56px', paddingBottom: '50px' }}>
       {/* 진행 상황 바 배경 */}
       <div
         className="relative w-full bg-gray-200"
@@ -70,9 +78,9 @@ export default function ProgressBar({ currentStep }: ProgressBarProps) {
                 }}
               />
 
-              {/* 원형 노드 */}
+              {/* 원형 노드 (틱 제거) */}
               <div
-                className="flex items-center justify-center rounded-full transition-all duration-500"
+                className="rounded-full transition-all duration-500"
                 style={{
                   width: '28px',
                   height: '28px',
@@ -99,4 +107,6 @@ export default function ProgressBar({ currentStep }: ProgressBarProps) {
       </div>
     </div>
   );
-}
+};
+
+export default ProgressBar;

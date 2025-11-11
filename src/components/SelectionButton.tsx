@@ -58,15 +58,13 @@ const SelectionButton = forwardRef<HTMLButtonElement, SelectionButtonProps>(
         }}
       >
         {isNextButton ? (
-          // 다시 버튼 (화살표 아이콘)
+          // 다시 버튼 (reset.png 아이콘)
           <div className="flex items-center justify-center" style={{ width: '136px', height: '136px' }}>
-            <svg width="136" height="136" viewBox="0 0 136 136" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M85 45.3333L45.3333 85M45.3333 85L45.3333 51.6667M45.3333 85L78.6667 85"
-                    stroke="black"
-                    strokeWidth="8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"/>
-            </svg>
+            <img
+              src="/reset.png"
+              alt="reset icon"
+              style={{ width: '136px', height: '136px', objectFit: 'contain' }}
+            />
           </div>
         ) : (
           // 일반 버튼 (텍스트)

@@ -5,25 +5,23 @@ import AALayout from '@/components/AALayout';
 import SelectionButton from '@/components/SelectionButton';
 import CompletionModal from '@/components/CompletionModal';
 import ProgressBar from '@/components/ProgressBar';
-import { categories, subjects, predicates, buildSentence, WordOption } from '@/data/wordData';
+import { categories, coreWords, predicates, buildSentence, WordOption } from '@/data/wordData';
 import { getEnhancedSentence } from '@/lib/openai';
 import { useRegisterIrisHandlers } from '@/contexts/IrisTrackerContext';
 
-type SelectionStep = 'category' | 'subject' | 'predicate';
+export type SelectionStep = 'category' | 'coreWord' | 'predicate';
 
 export default function MainPage() {
   const [currentStep, setCurrentStep] = useState<SelectionStep>('category');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [selectedSubject, setSelectedSubject] = useState<string>('');
+  const [selectedCoreWord, setSelectedCoreWord] = useState<string>('');
   const [selectedPredicate, setSelectedPredicate] = useState<string>('');
-  const [blinkMode, setBlinkMode] = useState<'single' | 'double'>('single');
   const [isDesktop, setIsDesktop] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [isMounted, setIsMounted] = useState(false);
   const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
   const [finalSentence, setFinalSentence] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [isQuestionMode, setIsQuestionMode] = useState<boolean>(false);
   const [speechInitialized, setSpeechInitialized] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState<boolean>(false);
 
@@ -128,14 +126,14 @@ export default function MainPage() {
     switch (currentStep) {
       case 'category':
         return categories.slice(0, 4);
-      case 'subject':
-        return subjects;
+      case 'coreWord':
+        return coreWords[selectedCategory] || [];
       case 'predicate':
-        return predicates[selectedCategory] || [];
+        return predicates[`${selectedCategory}_${selectedCoreWord}`] || [];
       default:
         return [];
     }
-  }, [currentStep, selectedCategory]);
+  }, [currentStep, selectedCategory, selectedCoreWord]);
 
   // 현재 페이지에 표시할 옵션 가져오기 (최대 4개)
   const getCurrentPageOptions = useCallback((): WordOption[] => {
@@ -299,25 +297,23 @@ export default function MainPage() {
 
     // 현재 단계에 따라 이전 단계로 이동
     if (currentStep === 'predicate') {
-      // 서술어 선택 중 → 주어 선택으로
-      setCurrentStep('subject');
+      // 서술어 선택 중 → 핵심 단어 선택으로
+      setCurrentStep('coreWord');
       setSelectedPredicate('');
       setFinalSentence('');
       setIsGenerating(false);
-    } else if (currentStep === 'subject') {
-      // 주어 선택 중 → 카테고리 선택으로
+    } else if (currentStep === 'coreWord') {
+      // 핵심 단어 선택 중 → 카테고리 선택으로
       setCurrentStep('category');
-      setSelectedSubject('');
-      setIsQuestionMode(false);
+      setSelectedCoreWord('');
     } else {
       // 카테고리 선택 중 → 모든 것 초기화 (처음으로)
       setCurrentStep('category');
       setSelectedCategory('');
-      setSelectedSubject('');
+      setSelectedCoreWord('');
       setSelectedPredicate('');
       setFinalSentence('');
       setIsGenerating(false);
-      setIsQuestionMode(false);
     }
 
     setCurrentPage(0);
@@ -337,12 +333,11 @@ export default function MainPage() {
 
     setCurrentStep('category');
     setSelectedCategory('');
-    setSelectedSubject('');
+    setSelectedCoreWord('');
     setSelectedPredicate('');
     setCurrentPage(0);
     setFinalSentence('');
     setIsGenerating(false);
-    setIsQuestionMode(false);
     setSelectedButtonIndex(0); // 첫 번째 버튼으로 리셋
   }, []);
 
@@ -358,32 +353,23 @@ export default function MainPage() {
     switch (currentStep) {
       case 'category':
         setSelectedCategory(buttonId);
-        setCurrentStep('subject');
+        setCurrentStep('coreWord');
         setCurrentPage(0);
         setSelectedButtonIndex(0); // 첫 번째 버튼으로 리셋
         break;
 
-      case 'subject':
-        if (buttonId === 'question_mode') {
-          setIsQuestionMode(true);
-          setCurrentStep('predicate');
-        } else {
-          setSelectedSubject(buttonId);
-          setCurrentStep('predicate');
-        }
+      case 'coreWord':
+        setSelectedCoreWord(buttonId);
+        setCurrentStep('predicate');
         setCurrentPage(0);
         setSelectedButtonIndex(0); // 첫 번째 버튼으로 리셋
         break;
 
       case 'predicate':
         // GPT API를 통해 문장 개선
-        const subjectLabel = subjects.find(s => s.id === selectedSubject)?.label || '';
-        const predicateLabel = predicates[selectedCategory]?.find(p => p.id === buttonId)?.label || '';
-        let originalSentence = buildSentence(selectedSubject, buttonId, selectedCategory);
-
-        if (isQuestionMode) {
-          originalSentence = originalSentence + '?';
-        }
+        const coreWordLabel = coreWords[selectedCategory]?.find(c => c.id === selectedCoreWord)?.label || '';
+        const predicateLabel = predicates[`${selectedCategory}_${selectedCoreWord}`]?.find(p => p.id === buttonId)?.label || '';
+        let originalSentence = buildSentence(selectedCategory, selectedCoreWord, buttonId);
 
         // 즉시 원본 문장 표시
         setFinalSentence(originalSentence);
@@ -391,7 +377,7 @@ export default function MainPage() {
         setSelectedPredicate(buttonId);
 
         // GPT API 호출
-        getEnhancedSentence(subjectLabel, predicateLabel, selectedCategory, originalSentence, isQuestionMode)
+        getEnhancedSentence(coreWordLabel, predicateLabel, selectedCategory, originalSentence, false)
           .then((enhanced) => {
             setFinalSentence(enhanced);
             setIsGenerating(false);
@@ -399,7 +385,7 @@ export default function MainPage() {
             // 음성 출력
             speakSentence(enhanced);
 
-            // 모달 표시 (3초 후 자동 리셋 대신)
+            // 모달 표시
             setShowCompletionModal(true);
             showCompletionModalRef.current = true;
           })
@@ -410,13 +396,13 @@ export default function MainPage() {
             // 에러 시에도 원본 문장 음성 출력
             speakSentence(originalSentence);
 
-            // 모달 표시 (3초 후 자동 리셋 대신)
+            // 모달 표시
             setShowCompletionModal(true);
             showCompletionModalRef.current = true;
           });
         break;
     }
-  }, [currentStep, currentPage, getAllOptions, resetSelection, selectedCategory, selectedSubject, isQuestionMode, speakSentence]);
+  }, [currentStep, currentPage, getAllOptions, selectedCategory, selectedCoreWord, speakSentence]);
 
   // Zone 기반 버튼 이동 핸들러 (기존 방식)
   const handleZoneChange = useCallback((direction: 'left' | 'right') => {
@@ -433,14 +419,10 @@ export default function MainPage() {
       const currentOptions = getCurrentPageOptions();
       let allButtons: WordOption[];
 
-      // 주어 선택 단계에서는 질문 버튼도 추가
-      if (currentStep === 'subject') {
-        allButtons = [...currentOptions, { id: 'question_mode', label: '질문' }];
-      } else {
-        allButtons = showNextButton()
-          ? [...currentOptions, { id: 'next_page', label: '다시' }]
-          : currentOptions;
-      }
+      // 다시 버튼 표시 여부에 따라 버튼 배열 구성
+      allButtons = showNextButton()
+        ? [...currentOptions, { id: 'next_page', label: '다시' }]
+        : currentOptions;
 
       if (allButtons.length === 0) {
         isProcessingSaccadeRef.current = false;
@@ -468,17 +450,14 @@ export default function MainPage() {
   // 실시간 문장 생성
   const currentSentence = useMemo(() => {
     if (isGenerating) {
-      return "GPT가 문장을 생성하는 중입니다...";
+      return "문장을 생성하는 중입니다...";
     }
     if (finalSentence) {
       return finalSentence;
     }
-    let sentence = buildSentence(selectedSubject, selectedPredicate, selectedCategory);
-    if (isQuestionMode && sentence) {
-      sentence = sentence + '?';
-    }
+    const sentence = buildSentence(selectedCategory, selectedCoreWord, selectedPredicate);
     return sentence;
-  }, [selectedSubject, selectedPredicate, selectedCategory, finalSentence, isGenerating, isQuestionMode]);
+  }, [selectedCategory, selectedCoreWord, selectedPredicate, finalSentence, isGenerating]);
 
   // 버튼 레이아웃 스타일
   const buttonContainerStyle = useMemo(() => {
@@ -493,13 +472,7 @@ export default function MainPage() {
 
     const currentOptions = getCurrentPageOptions();
     const hasNext = showNextButton();
-    let buttonCount;
-
-    if (currentStep === 'subject') {
-      buttonCount = currentOptions.length + 1;
-    } else {
-      buttonCount = hasNext ? currentOptions.length + 1 : currentOptions.length;
-    }
+    const buttonCount = hasNext ? currentOptions.length + 1 : currentOptions.length;
     const screenWidth = windowSize.width;
 
     let buttonWidth: number;
@@ -514,7 +487,8 @@ export default function MainPage() {
     const gap = 14;
     const totalWidth = buttonCount * buttonWidth + (buttonCount - 1) * gap;
     const leftPosition = Math.max(56, (screenWidth - totalWidth) / 2);
-    const topPosition = isDesktop ? '150px' : '140px';
+    // 프로그레스 바 아래에 배치 (150px 상단 버튼 + 프로그레스 바 높이 + 여백)
+    const topPosition = '250px';
 
     return {
       left: `${leftPosition}px`,
@@ -544,14 +518,10 @@ export default function MainPage() {
     const currentOptions = getCurrentPageOptions();
     let allButtons: WordOption[];
 
-    // 주어 선택 단계에서는 질문 버튼도 추가
-    if (currentStep === 'subject') {
-      allButtons = [...currentOptions, { id: 'question_mode', label: '질문' }];
-    } else {
-      allButtons = showNextButton()
-        ? [...currentOptions, { id: 'next_page', label: '다시' }]
-        : currentOptions;
-    }
+    // 다시 버튼 표시 여부에 따라 버튼 배열 구성
+    allButtons = showNextButton()
+      ? [...currentOptions, { id: 'next_page', label: '다시' }]
+      : currentOptions;
 
     if (allButtons.length === 0) {
       console.log('⚠️ 선택 가능한 버튼이 없습니다');
@@ -588,7 +558,11 @@ export default function MainPage() {
   return (
     <>
       {/* 진행 상황 바 */}
-      <ProgressBar currentStep={currentStep} />
+      <ProgressBar
+        currentStep={currentStep}
+        currentPage={currentStep === 'predicate' ? currentPage : 0}
+        isCompleted={showCompletionModal || !!finalSentence}
+      />
 
       {/* 문장 완성 모달 */}
       <CompletionModal
@@ -597,7 +571,11 @@ export default function MainPage() {
       />
 
       <AALayout
-        title={currentStep === 'category' ? '상황 선택' : currentStep === 'subject' ? '주어 선택' : '서술어 선택'}
+        title={
+          currentStep === 'category' ? '상황 선택' :
+          currentStep === 'coreWord' ? '핵심 단어 선택' :
+          currentPage > 0 ? '단어 선택' : '서술어 선택'
+        }
         outputText={currentSentence}
         isDesktop={isDesktop}
         onBack={handleBack}
@@ -624,23 +602,7 @@ export default function MainPage() {
             />
           ))}
 
-          {currentStep === 'subject' && (
-            <SelectionButton
-              ref={(el) => {
-                if (el) buttonRefs.current.question_mode = el;
-              }}
-              id="question_mode"
-              label="질문"
-              progress={0}
-              isDesktop={isDesktop}
-              customWidth={buttonContainerStyle.buttonWidth}
-              isNextButton={false}
-              isSelected={selectedButtonIndex === getCurrentPageOptions().length}
-              onClick={() => handleSelection('question_mode')}
-            />
-          )}
-
-          {currentStep !== 'subject' && showNextButton() && (
+          {showNextButton() && (
             <SelectionButton
               ref={(el) => {
                 if (el) buttonRefs.current.next_page = el;
