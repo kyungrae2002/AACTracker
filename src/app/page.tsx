@@ -27,6 +27,9 @@ export default function MainPage() {
   const [speechInitialized, setSpeechInitialized] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState<boolean>(false);
 
+  // 모달 상태를 ref로도 저장 (클로저 문제 해결)
+  const showCompletionModalRef = useRef<boolean>(false);
+
   // 현재 선택된 버튼 인덱스 (zone 기반 선택)
   const [selectedButtonIndex, setSelectedButtonIndex] = useState(0);
 
@@ -398,6 +401,7 @@ export default function MainPage() {
 
             // 모달 표시 (3초 후 자동 리셋 대신)
             setShowCompletionModal(true);
+            showCompletionModalRef.current = true;
           })
           .catch((error) => {
             console.error('GPT 문장 생성 실패:', error);
@@ -408,6 +412,7 @@ export default function MainPage() {
 
             // 모달 표시 (3초 후 자동 리셋 대신)
             setShowCompletionModal(true);
+            showCompletionModalRef.current = true;
           });
         break;
     }
@@ -523,10 +528,14 @@ export default function MainPage() {
 
   // 긴 깜빡임 핸들러 (현재 선택된 버튼 클릭 또는 모달에서 처음으로 돌아가기)
   const handleLongBlink = useCallback(() => {
+    const isModalVisible = showCompletionModalRef.current;
+    console.log('👁️ handleLongBlink 호출됨, showCompletionModal:', isModalVisible);
+
     // 모달이 표시 중일 때: 처음 화면으로 돌아가기
-    if (showCompletionModal) {
-      console.log('🔄 긴 깜빡임으로 처음 화면으로 돌아갑니다');
+    if (isModalVisible) {
+      console.log('🔄 [모달] 긴 깜빡임으로 처음 화면으로 돌아갑니다');
       setShowCompletionModal(false);
+      showCompletionModalRef.current = false;
       resetSelection();
       return;
     }
@@ -554,7 +563,7 @@ export default function MainPage() {
       console.log(`✅ 긴 깜빡임으로 버튼 선택: ${selectedButton.label} (ID: ${selectedButton.id})`);
       handleSelection(selectedButton.id);
     }
-  }, [showCompletionModal, getCurrentPageOptions, currentStep, showNextButton, selectedButtonIndex, handleSelection, resetSelection]);
+  }, [getCurrentPageOptions, currentStep, showNextButton, selectedButtonIndex, handleSelection, resetSelection]);
 
   // 짧은 깜빡임 여러 번 핸들러 (뒤로가기)
   const handleDoubleBlink = useCallback(() => {
