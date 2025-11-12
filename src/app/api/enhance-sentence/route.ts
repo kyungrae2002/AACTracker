@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
         { role: 'system', content: SYSTEM_MESSAGE },
         { role: 'user', content: prompt }
       ],
-      temperature: 0.4,
+      temperature: 0.5,
       max_tokens: 50,
     });
 
