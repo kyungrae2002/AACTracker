@@ -26,11 +26,7 @@ export default function RootLayout({
   return (
     <html lang="ko" suppressHydrationWarning>
       <head>
-        {/* NanumSquareRound 폰트 */}
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/gh/moonspam/NanumSquare@2.0/nanumsquare.css"
-        />
+        {/* Nanum Square Round 폰트는 globals.css에서 @font-face로 로드됨 */}
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

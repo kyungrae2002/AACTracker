@@ -1,5 +1,24 @@
 @import "tailwindcss";
 
+/* Nanum Square Round 글꼴 정의 */
+@font-face {
+  font-family: 'NanumSquareRound';
+  src: url('/nanum-square-round/NanumSquareRoundR.ttf') format('truetype');
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: 'NanumSquareRound';
+  src: url('/nanum-square-round/NanumSquareRoundB.ttf') format('truetype');
+  font-weight: 700;
+}
+
+@font-face {
+  font-family: 'NanumSquareRound';
+  src: url('/nanum-square-round/NanumSquareRoundEB.ttf') format('truetype');
+  font-weight: 800;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

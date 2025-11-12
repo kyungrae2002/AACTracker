@@ -169,7 +169,7 @@ export default function MainPage() {
 
   // "다시" 버튼을 표시할지 확인
   const showNextButton = useCallback((): boolean => {
-    if (currentStep === 'category') return false;
+    if (currentStep === 'category' || currentStep === 'subject') return false;
     const allOptions = getAllOptions();
     return allOptions.length > 4;
   }, [getAllOptions, currentStep]);
@@ -451,6 +451,11 @@ export default function MainPage() {
 
   // 단계별 뒤로가기
   const handleBack = useCallback(() => {
+    // 모달이 표시 중이면 뒤로가기 차단
+    if (showCompletionModal) {
+      return;
+    }
+
     // 음성 중지 (안전하게)
     try {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -592,6 +597,11 @@ export default function MainPage() {
 
   // Zone 기반 버튼 이동 핸들러 (기존 방식)
   const handleZoneChange = useCallback((direction: 'left' | 'right') => {
+    // 모달이 표시 중이면 Zone 변경 차단
+    if (showCompletionModal) {
+      return;
+    }
+
     // 이미 처리 중이면 무시
     if (isProcessingSaccadeRef.current) {
       console.log(`[MainPage] Ignoring duplicate saccade (already processing)`);
