@@ -23,7 +23,10 @@
       "Bash(adb shell:*)",
       "Bash(~/Library/Android/sdk/platform-tools/adb shell wm size)",
       "Bash(cat:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(kill:*)"
     ],
     "deny": [],
     "ask": []

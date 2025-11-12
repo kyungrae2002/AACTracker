@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 class WebViewScreen extends StatefulWidget {
   const WebViewScreen({super.key});
@@ -16,6 +17,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
   bool _hasError = false;
   double _progress = 0;
   bool _showAppBar = false; // 상단바 표시 여부
+  late FlutterTts _flutterTts;
 
   // 배포된 웹 URL
   final String webUrl = 'https://bgleeexion.vercel.app/';
@@ -24,12 +26,54 @@ class _WebViewScreenState extends State<WebViewScreen> {
   void initState() {
     super.initState();
     _requestPermissions();
+    _initTts();
   }
 
   Future<void> _requestPermissions() async {
     // 카메라와 마이크 권한 요청
     await Permission.camera.request();
     await Permission.microphone.request();
+  }
+
+  // TTS 초기화
+  Future<void> _initTts() async {
+    _flutterTts = FlutterTts();
+
+    // Android 전용 설정
+    await _flutterTts.setLanguage("ko-KR");
+    await _flutterTts.setSpeechRate(0.5); // 말하기 속도
+    await _flutterTts.setVolume(1.0); // 볼륨
+    await _flutterTts.setPitch(1.0); // 음높이
+
+    // TTS 이벤트 핸들러
+    _flutterTts.setStartHandler(() {
+      debugPrint('🔊 네이티브 TTS 시작');
+    });
+
+    _flutterTts.setCompletionHandler(() {
+      debugPrint('✅ 네이티브 TTS 완료');
+    });
+
+    _flutterTts.setErrorHandler((msg) {
+      debugPrint('❌ 네이티브 TTS 에러: $msg');
+    });
+  }
+
+  // 네이티브 TTS로 텍스트 읽기
+  Future<void> _speak(String text) async {
+    try {
+      await _flutterTts.stop(); // 이전 TTS 중지
+      await _flutterTts.speak(text);
+      debugPrint('🎤 네이티브 TTS 재생: $text');
+    } catch (e) {
+      debugPrint('❌ TTS 재생 실패: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _flutterTts.stop();
+    super.dispose();
   }
 
   @override
@@ -78,9 +122,32 @@ class _WebViewScreenState extends State<WebViewScreen> {
                   allowsInlineMediaPlayback: true,
                   javaScriptCanOpenWindowsAutomatically: true,
                   useHybridComposition: true,
+                  // TTS 작동을 위한 추가 설정
+                  domStorageEnabled: true,
+                  databaseEnabled: true,
+                  allowFileAccessFromFileURLs: true,
+                  allowUniversalAccessFromFileURLs: true,
+                  mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+                  // 하드웨어 가속
+                  hardwareAcceleration: true,
+                  // 자동재생 허용
+                  allowsBackForwardNavigationGestures: true,
                 ),
                 onWebViewCreated: (controller) {
                   _webViewController = controller;
+
+                  // JavaScript 핸들러 추가 (웹 -> 네이티브 통신)
+                  controller.addJavaScriptHandler(
+                    handlerName: 'FlutterTTS',
+                    callback: (args) {
+                      // 웹에서 JavaScript 핸들러로 TTS 요청 시 처리
+                      if (args.isNotEmpty) {
+                        final text = args[0].toString();
+                        debugPrint('📱 웹에서 네이티브 TTS 요청: $text');
+                        _speak(text);
+                      }
+                    },
+                  );
                 },
                 onLoadStart: (controller, url) {
                   setState(() {

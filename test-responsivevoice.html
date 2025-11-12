@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResponsiveVoice TTS 테스트</title>
+    <!-- ResponsiveVoice 라이브러리 -->
+    <script src="https://code.responsivevoice.org/responsivevoice.js?key=YOUR_KEY"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        button {
+            padding: 12px 24px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        #log {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 14px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .alternative {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>대체 TTS 솔루션 테스트</h1>
+
+    <div class="info">
+        <h3>💡 macOS Chrome TTS 문제 해결 방법</h3>
+        <p>1. Chrome 설정 → 접근성 → "웹 콘텐츠에 추가 접근성 기능 사용" 활성화</p>
+        <p>2. macOS 시스템 환경설정 → 손쉬운 사용 → 말하기 → 시스템 음성 선택</p>
+        <p>3. Chrome 재시작 후 테스트</p>
+    </div>
+
+    <div>
+        <h2>네이티브 Web Speech API 추가 테스트</h2>
+        <button onclick="testWithGoogleVoice()">Google 음성만 사용</button>
+        <button onclick="testWithEnglish()">영어로 테스트</button>
+        <button onclick="testWithChromeTTS()">Chrome TTS API</button>
+        <button onclick="clearLog()">로그 지우기</button>
+    </div>
+
+    <div class="alternative">
+        <h2>대체 방법 1: ResponsiveVoice (무료 버전)</h2>
+        <button onclick="testResponsiveVoice()">ResponsiveVoice 테스트</button>
+        <p>외부 라이브러리를 사용하는 방법 (API 키 필요)</p>
+    </div>
+
+    <div class="alternative">
+        <h2>대체 방법 2: Google Cloud TTS</h2>
+        <button onclick="showGoogleCloudInfo()">Google Cloud TTS 정보</button>
+        <p>서버 측 구현이 필요하지만 가장 안정적</p>
+    </div>
+
+    <div class="alternative">
+        <h2>대체 방법 3: 오디오 파일 사전 생성</h2>
+        <button onclick="testPrerecorded()">사전 녹음 테스트</button>
+        <p>자주 사용하는 문장을 미리 녹음</p>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        const log = (message) => {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.textContent += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        };
+
+        // Google 음성만 사용
+        function testWithGoogleVoice() {
+            log('🔍 Google 음성 검색 중...');
+
+            const voices = window.speechSynthesis.getVoices();
+            const googleVoices = voices.filter(v => v.name.includes('Google'));
+
+            if (googleVoices.length === 0) {
+                log('❌ Google 음성을 찾을 수 없습니다');
+                log('💡 대신 Chrome 확장 프로그램 "Read Aloud"를 사용해보세요');
+                return;
+            }
+
+            const googleKorean = googleVoices.find(v => v.lang.includes('ko'));
+            if (googleKorean) {
+                log(`✅ Google 한국어 음성 발견: ${googleKorean.name}`);
+
+                window.speechSynthesis.cancel();
+                const u = new SpeechSynthesisUtterance('Google 음성 테스트입니다');
+                u.voice = googleKorean;
+                u.onend = () => log('✅ 완료');
+                u.onerror = (e) => log(`❌ 에러: ${e.error}`);
+                window.speechSynthesis.speak(u);
+            } else {
+                log('❌ Google 한국어 음성 없음');
+            }
+        }
+
+        // 영어로 테스트 (보통 더 잘 작동함)
+        function testWithEnglish() {
+            log('🔤 영어 TTS 테스트...');
+
+            window.speechSynthesis.cancel();
+
+            const u = new SpeechSynthesisUtterance('Hello, this is a test');
+            u.lang = 'en-US';
+
+            const voices = window.speechSynthesis.getVoices();
+            const englishVoice = voices.find(v =>
+                v.lang === 'en-US' &&
+                (v.name.includes('Google') || v.name.includes('Microsoft'))
+            );
+
+            if (englishVoice) {
+                u.voice = englishVoice;
+                log(`선택된 음성: ${englishVoice.name}`);
+            }
+
+            u.onstart = () => log('✅ 시작');
+            u.onend = () => log('✅ 완료');
+            u.onerror = (e) => log(`❌ 에러: ${e.error}`);
+
+            window.speechSynthesis.speak(u);
+        }
+
+        // Chrome TTS API 직접 사용 (Chrome 확장 프로그램에서만 가능)
+        function testWithChromeTTS() {
+            log('🔧 Chrome TTS API 테스트...');
+
+            if (typeof chrome !== 'undefined' && chrome.tts) {
+                chrome.tts.speak('Chrome TTS 테스트', {
+                    lang: 'ko-KR',
+                    rate: 1.0,
+                    onEvent: function(event) {
+                        log(`Chrome TTS 이벤트: ${event.type}`);
+                    }
+                });
+            } else {
+                log('❌ Chrome TTS API를 사용할 수 없습니다');
+                log('💡 Chrome 확장 프로그램에서만 사용 가능합니다');
+            }
+        }
+
+        // ResponsiveVoice 테스트
+        function testResponsiveVoice() {
+            log('🔊 ResponsiveVoice 테스트...');
+
+            if (typeof responsiveVoice !== 'undefined') {
+                responsiveVoice.speak("안녕하세요, ResponsiveVoice 테스트입니다", "Korean Female");
+                log('✅ ResponsiveVoice 실행됨');
+            } else {
+                log('❌ ResponsiveVoice가 로드되지 않았습니다');
+                log('💡 https://responsivevoice.org 에서 무료 API 키를 받으세요');
+            }
+        }
+
+        // Google Cloud TTS 정보
+        function showGoogleCloudInfo() {
+            log('☁️ Google Cloud TTS 구현 방법:');
+            log('1. Google Cloud Console에서 프로젝트 생성');
+            log('2. Text-to-Speech API 활성화');
+            log('3. API 키 생성');
+            log('4. 서버에서 API 호출 구현');
+            log('5. 생성된 오디오를 클라이언트로 전송');
+            log('');
+            log('장점: 안정적, 고품질, 다양한 음성');
+            log('단점: 유료 (월 100만자 무료), 서버 구현 필요');
+        }
+
+        // 사전 녹음 테스트
+        function testPrerecorded() {
+            log('🎵 사전 녹음 방식 테스트...');
+
+            // 예시: 오디오 파일 재생
+            const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZizcIG2m98OScTgwOUazi');
+            audio.play()
+                .then(() => log('✅ 오디오 재생 성공'))
+                .catch(e => log(`❌ 오디오 재생 실패: ${e.message}`));
+
+            log('💡 실제 구현: 자주 사용하는 문장들을 미리 녹음하여 저장');
+        }
+
+        function clearLog() {
+            document.getElementById('log').textContent = '';
+            log('로그 초기화됨');
+        }
+
+        // 초기화
+        window.addEventListener('load', () => {
+            log('🚀 페이지 로드 완료');
+
+            const voices = window.speechSynthesis.getVoices();
+            log(`📢 사용 가능한 음성: ${voices.length}개`);
+
+            // Google 음성 확인
+            const googleVoices = voices.filter(v => v.name.includes('Google'));
+            if (googleVoices.length > 0) {
+                log(`✅ Google 음성 ${googleVoices.length}개 발견`);
+                googleVoices.forEach(v => log(`  - ${v.name} (${v.lang})`));
+            } else {
+                log('⚠️ Google 음성이 없습니다. 대체 방법을 사용하세요.');
+            }
+
+            // macOS 확인
+            if (navigator.platform.includes('Mac')) {
+                log('⚠️ macOS 감지됨 - Chrome TTS 문제가 있을 수 있습니다');
+            }
+        });
+    </script>
+</body>
+</html>

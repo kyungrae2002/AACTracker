@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebView TTS 테스트</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .info {
+            background: #f0f0f0;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .log {
+            background: #000;
+            color: #0f0;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebView TTS 진단 도구</h1>
+
+    <div class="info">
+        <h3>환경 정보:</h3>
+        <div id="environment"></div>
+    </div>
+
+    <div class="info">
+        <h3>기능 지원 현황:</h3>
+        <div id="support"></div>
+    </div>
+
+    <h2>테스트 버튼들:</h2>
+
+    <button onclick="testBasicTTS()">1. 기본 TTS 테스트</button>
+    <button onclick="testWithUserGesture()">2. 사용자 제스처 TTS</button>
+    <button onclick="testFallbackAudio()">3. Audio 폴백 테스트</button>
+    <button onclick="testGoogleTTS()">4. Google TTS API 테스트</button>
+    <button onclick="clearLog()">로그 지우기</button>
+
+    <div id="status"></div>
+
+    <h3>디버그 로그:</h3>
+    <div class="log" id="log"></div>
+
+    <script>
+        // 로그 함수
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const color = type === 'error' ? '#ff6b6b' : type === 'success' ? '#51cf66' : '#ffd43b';
+            logDiv.innerHTML += `<div style="color: ${color}">[${time}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(`[${type}] ${message}`);
+        }
+
+        function showStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+            setTimeout(() => {
+                statusDiv.textContent = '';
+                statusDiv.className = '';
+            }, 5000);
+        }
+
+        // 환경 감지
+        function detectEnvironment() {
+            const ua = navigator.userAgent;
+            const env = document.getElementById('environment');
+
+            // WebView 감지
+            const isWebView = ua.includes('wv') ||
+                             ua.includes('flutter') ||
+                             ua.includes('dart') ||
+                             (ua.includes('Android') && !ua.includes('Chrome/'));
+
+            // Flutter 인터페이스 감지
+            const hasFlutterInterface = typeof window.flutter_inappwebview !== 'undefined' ||
+                                       typeof window.FlutterWebView !== 'undefined';
+
+            env.innerHTML = `
+                <p><strong>User Agent:</strong><br>${ua}</p>
+                <p><strong>WebView 감지:</strong> ${isWebView ? '✅ 예' : '❌ 아니오'}</p>
+                <p><strong>Flutter 인터페이스:</strong> ${hasFlutterInterface ? '✅ 있음' : '❌ 없음'}</p>
+                <p><strong>Platform:</strong> ${navigator.platform}</p>
+                <p><strong>Language:</strong> ${navigator.language}</p>
+            `;
+
+            log(`환경: WebView=${isWebView}, Flutter=${hasFlutterInterface}`, 'info');
+        }
+
+        // 기능 지원 확인
+        function checkSupport() {
+            const support = document.getElementById('support');
+            const features = {
+                'Web Speech API': typeof window.speechSynthesis !== 'undefined',
+                'SpeechSynthesisUtterance': typeof SpeechSynthesisUtterance !== 'undefined',
+                'Audio API': typeof Audio !== 'undefined',
+                'getUserMedia': navigator.mediaDevices && navigator.mediaDevices.getUserMedia,
+                'Permissions API': typeof navigator.permissions !== 'undefined',
+            };
+
+            let html = '<ul>';
+            for (const [feature, supported] of Object.entries(features)) {
+                html += `<li>${feature}: ${supported ? '✅ 지원' : '❌ 미지원'}</li>`;
+                log(`${feature}: ${supported ? '지원' : '미지원'}`, supported ? 'success' : 'error');
+            }
+            html += '</ul>';
+
+            support.innerHTML = html;
+
+            // 음성 목록 확인
+            if (window.speechSynthesis) {
+                const loadVoices = () => {
+                    const voices = window.speechSynthesis.getVoices();
+                    log(`사용 가능한 음성: ${voices.length}개`, voices.length > 0 ? 'success' : 'warning');
+
+                    const koreanVoices = voices.filter(v => v.lang.startsWith('ko'));
+                    log(`한국어 음성: ${koreanVoices.length}개`, koreanVoices.length > 0 ? 'success' : 'warning');
+
+                    if (koreanVoices.length > 0) {
+                        koreanVoices.forEach(v => {
+                            log(`  - ${v.name} (${v.lang})`, 'info');
+                        });
+                    }
+                };
+
+                loadVoices();
+                if (window.speechSynthesis.onvoiceschanged !== undefined) {
+                    window.speechSynthesis.onvoiceschanged = loadVoices;
+                }
+            }
+        }
+
+        // 1. 기본 TTS 테스트
+        function testBasicTTS() {
+            log('기본 TTS 테스트 시작...', 'info');
+
+            if (!window.speechSynthesis) {
+                log('❌ speechSynthesis를 지원하지 않습니다', 'error');
+                showStatus('TTS를 지원하지 않는 환경입니다', 'error');
+                return;
+            }
+
+            try {
+                // 이전 음성 중지
+                window.speechSynthesis.cancel();
+
+                const text = '안녕하세요. WebView TTS 테스트입니다.';
+                const utterance = new SpeechSynthesisUtterance(text);
+
+                utterance.lang = 'ko-KR';
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
+
+                utterance.onstart = () => {
+                    log('✅ TTS 시작됨', 'success');
+                    showStatus('음성 재생 중...', 'success');
+                };
+
+                utterance.onend = () => {
+                    log('✅ TTS 완료됨', 'success');
+                    showStatus('음성 재생 완료!', 'success');
+                };
+
+                utterance.onerror = (event) => {
+                    log(`❌ TTS 에러: ${event.error}`, 'error');
+                    showStatus(`TTS 에러: ${event.error}`, 'error');
+                };
+
+                window.speechSynthesis.speak(utterance);
+                log('speak() 호출됨', 'info');
+
+            } catch (error) {
+                log(`❌ 예외 발생: ${error}`, 'error');
+                showStatus('TTS 실행 중 오류 발생', 'error');
+            }
+        }
+
+        // 2. 사용자 제스처와 함께 TTS
+        function testWithUserGesture() {
+            log('사용자 제스처 TTS 테스트...', 'info');
+
+            // 초기화 시도
+            if (window.speechSynthesis) {
+                const initUtterance = new SpeechSynthesisUtterance('');
+                initUtterance.volume = 0;
+                window.speechSynthesis.speak(initUtterance);
+                log('빈 utterance로 초기화 시도', 'info');
+            }
+
+            // 실제 TTS
+            setTimeout(() => {
+                testBasicTTS();
+            }, 100);
+        }
+
+        // 3. Audio 폴백 테스트
+        function testFallbackAudio() {
+            log('Audio 폴백 테스트 시작...', 'info');
+
+            const testAudioUrl = 'https://www.soundjay.com/misc/sounds/bell-ringing-01.mp3';
+
+            try {
+                const audio = new Audio(testAudioUrl);
+
+                audio.oncanplay = () => {
+                    log('✅ 오디오 로드 성공', 'success');
+                };
+
+                audio.onerror = (e) => {
+                    log(`❌ 오디오 에러: ${e}`, 'error');
+                };
+
+                audio.play()
+                    .then(() => {
+                        log('✅ 오디오 재생 성공', 'success');
+                        showStatus('오디오 재생 성공!', 'success');
+                    })
+                    .catch(error => {
+                        log(`❌ 오디오 재생 실패: ${error}`, 'error');
+                        showStatus(`오디오 재생 실패: ${error}`, 'error');
+                    });
+
+            } catch (error) {
+                log(`❌ Audio 예외: ${error}`, 'error');
+            }
+        }
+
+        // 4. Google TTS API 테스트
+        function testGoogleTTS() {
+            log('Google TTS API 테스트...', 'info');
+
+            const text = '구글 TTS 테스트입니다';
+            const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=ko&client=tw-ob`;
+
+            try {
+                const audio = new Audio(url);
+
+                audio.onloadeddata = () => {
+                    log('✅ Google TTS 로드 성공', 'success');
+                };
+
+                audio.onerror = () => {
+                    log('❌ Google TTS 로드 실패 (CORS 가능성)', 'error');
+                };
+
+                audio.play()
+                    .then(() => {
+                        log('✅ Google TTS 재생 성공', 'success');
+                        showStatus('Google TTS 재생 성공!', 'success');
+                    })
+                    .catch(error => {
+                        log(`❌ Google TTS 재생 실패: ${error}`, 'error');
+                        showStatus('Google TTS 재생 실패', 'error');
+                    });
+
+            } catch (error) {
+                log(`❌ Google TTS 예외: ${error}`, 'error');
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            log('로그 클리어됨', 'info');
+        }
+
+        // 페이지 로드 시 초기화
+        window.onload = () => {
+            detectEnvironment();
+            checkSupport();
+            log('페이지 로드 완료', 'success');
+        };
+    </script>
+</body>
+</html>

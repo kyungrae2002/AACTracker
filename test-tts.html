@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTS 테스트</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #log {
+            background: #f0f0f0;
+            padding: 10px;
+            margin-top: 20px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>TTS 음성 출력 테스트</h1>
+
+    <button onclick="testSimpleTTS()">간단한 TTS 테스트</button>
+    <button onclick="testKoreanTTS()">한국어 TTS 테스트</button>
+    <button onclick="listVoices()">음성 목록 보기</button>
+    <button onclick="testWithVoiceSelection()">음성 선택 후 테스트</button>
+    <button onclick="clearLog()">로그 지우기</button>
+
+    <div id="log"></div>
+
+    <script>
+        const log = (message) => {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.textContent += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        };
+
+        // 간단한 TTS 테스트
+        function testSimpleTTS() {
+            log('🎤 간단한 TTS 테스트 시작');
+
+            if (!window.speechSynthesis) {
+                log('❌ 브라우저가 TTS를 지원하지 않습니다');
+                return;
+            }
+
+            const text = '안녕하세요. TTS 테스트입니다.';
+            const utterance = new SpeechSynthesisUtterance(text);
+
+            utterance.lang = 'ko-KR';
+            utterance.volume = 1.0;
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+
+            utterance.onstart = () => log('✅ 음성 출력 시작');
+            utterance.onend = () => log('✅ 음성 출력 완료');
+            utterance.onerror = (e) => log(`❌ 에러: ${e.error}`);
+
+            // 이전 음성 취소
+            window.speechSynthesis.cancel();
+
+            // 약간의 지연 후 시작
+            setTimeout(() => {
+                window.speechSynthesis.speak(utterance);
+                log('🔊 speak() 호출됨');
+            }, 100);
+        }
+
+        // 한국어 음성 선택 테스트
+        function testKoreanTTS() {
+            log('🎤 한국어 TTS 테스트 시작');
+
+            const voices = window.speechSynthesis.getVoices();
+            log(`📋 사용 가능한 음성: ${voices.length}개`);
+
+            if (voices.length === 0) {
+                log('⚠️ 음성 목록이 비어있음. 잠시 후 다시 시도하세요.');
+
+                // voiceschanged 이벤트 리스너 추가
+                window.speechSynthesis.onvoiceschanged = () => {
+                    log('🔄 음성 목록이 로드되었습니다. 다시 클릭해주세요.');
+                };
+                return;
+            }
+
+            const koreanVoice = voices.find(voice =>
+                voice.lang === 'ko-KR' || voice.lang.startsWith('ko')
+            );
+
+            const text = '한국어 음성으로 테스트합니다.';
+            const utterance = new SpeechSynthesisUtterance(text);
+
+            if (koreanVoice) {
+                utterance.voice = koreanVoice;
+                log(`✅ 한국어 음성 찾음: ${koreanVoice.name}`);
+            } else {
+                log('⚠️ 한국어 음성을 찾을 수 없음');
+            }
+
+            utterance.lang = 'ko-KR';
+            utterance.onstart = () => log('✅ 음성 출력 시작');
+            utterance.onend = () => log('✅ 음성 출력 완료');
+            utterance.onerror = (e) => log(`❌ 에러: ${e.error}`);
+
+            window.speechSynthesis.cancel();
+            setTimeout(() => {
+                window.speechSynthesis.speak(utterance);
+                log('🔊 speak() 호출됨');
+            }, 100);
+        }
+
+        // 음성 목록 보기
+        function listVoices() {
+            log('📋 음성 목록 조회 중...');
+
+            const voices = window.speechSynthesis.getVoices();
+
+            if (voices.length === 0) {
+                log('⚠️ 음성 목록이 비어있음');
+
+                // 음성 로드 시도
+                window.speechSynthesis.onvoiceschanged = () => {
+                    const newVoices = window.speechSynthesis.getVoices();
+                    log(`🔄 음성 목록 로드됨: ${newVoices.length}개`);
+                    newVoices.forEach((voice, index) => {
+                        log(`  ${index}: ${voice.name} (${voice.lang}) ${voice.localService ? '로컬' : '원격'}`);
+                    });
+                };
+
+                // 일부 브라우저에서 필요한 트릭
+                const dummy = new SpeechSynthesisUtterance('');
+                window.speechSynthesis.speak(dummy);
+                window.speechSynthesis.cancel();
+
+                return;
+            }
+
+            log(`총 ${voices.length}개의 음성 발견:`);
+            voices.forEach((voice, index) => {
+                log(`  ${index}: ${voice.name} (${voice.lang}) ${voice.localService ? '로컬' : '원격'}`);
+            });
+
+            const koreanVoices = voices.filter(v => v.lang.includes('ko'));
+            log(`\n한국어 음성: ${koreanVoices.length}개`);
+            koreanVoices.forEach(v => {
+                log(`  - ${v.name}`);
+            });
+        }
+
+        // 음성 선택 후 테스트
+        function testWithVoiceSelection() {
+            log('🎤 음성 선택 테스트 시작');
+
+            const voices = window.speechSynthesis.getVoices();
+            if (voices.length === 0) {
+                log('❌ 음성이 로드되지 않았습니다. "음성 목록 보기"를 먼저 클릭하세요.');
+                return;
+            }
+
+            // 우선순위: Google > Samsung > 기타 한국어
+            let selectedVoice = voices.find(v => v.lang.includes('ko') && v.name.includes('Google'));
+            if (!selectedVoice) {
+                selectedVoice = voices.find(v => v.lang.includes('ko') && v.name.includes('Samsung'));
+            }
+            if (!selectedVoice) {
+                selectedVoice = voices.find(v => v.lang.includes('ko'));
+            }
+            if (!selectedVoice && voices.length > 0) {
+                selectedVoice = voices[0];
+            }
+
+            if (selectedVoice) {
+                log(`✅ 선택된 음성: ${selectedVoice.name}`);
+
+                const utterance = new SpeechSynthesisUtterance('이 음성으로 테스트합니다.');
+                utterance.voice = selectedVoice;
+                utterance.lang = 'ko-KR';
+
+                utterance.onstart = () => log('✅ 음성 출력 시작');
+                utterance.onend = () => log('✅ 음성 출력 완료');
+                utterance.onerror = (e) => log(`❌ 에러: ${e.error}`);
+
+                window.speechSynthesis.cancel();
+                setTimeout(() => {
+                    window.speechSynthesis.speak(utterance);
+                    log('🔊 speak() 호출됨');
+                }, 100);
+            } else {
+                log('❌ 사용 가능한 음성이 없습니다');
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('log').textContent = '';
+            log('로그가 지워졌습니다');
+        }
+
+        // 페이지 로드 시 음성 미리 로드
+        window.addEventListener('load', () => {
+            log('🚀 페이지 로드 완료');
+
+            // 음성 목록 초기화
+            if (window.speechSynthesis) {
+                const voices = window.speechSynthesis.getVoices();
+                if (voices.length > 0) {
+                    log(`✅ 초기 음성 로드: ${voices.length}개`);
+                } else {
+                    log('⏳ 음성 로딩 중...');
+                    window.speechSynthesis.onvoiceschanged = () => {
+                        const newVoices = window.speechSynthesis.getVoices();
+                        log(`✅ 음성 로드 완료: ${newVoices.length}개`);
+                    };
+                }
+            } else {
+                log('❌ 이 브라우저는 Web Speech API를 지원하지 않습니다');
+            }
+        });
+    </script>
+</body>
+</html>

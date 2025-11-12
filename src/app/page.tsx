@@ -162,11 +162,100 @@ export default function MainPage() {
     return allOptions.length > 4;
   }, [getAllOptions, currentStep]);
 
+  // WebView 환경 감지
+  const isWebView = useCallback(() => {
+    const ua = navigator.userAgent.toLowerCase();
+    // Flutter WebView 감지
+    const isFlutterWebView = ua.includes('flutter') ||
+                             ua.includes('dart') ||
+                             (ua.includes('wv') && ua.includes('android')) ||
+                             (ua.includes('webkit') && !ua.includes('safari'));
+
+    // Flutter에서 주입한 JavaScript 인터페이스 확인
+    const hasFlutterInterface = typeof (window as any).flutter_inappwebview !== 'undefined' ||
+                               typeof (window as any).FlutterWebView !== 'undefined' ||
+                               typeof (window as any).FlutterTTS !== 'undefined';
+
+    return isFlutterWebView || hasFlutterInterface;
+  }, []);
+
+  // 폴백 TTS 함수 (Web Speech API가 실패할 때)
+  const playFallbackTTS = useCallback(async (text: string) => {
+    try {
+      console.log('🔊 폴백 TTS 사용:', text);
+
+      // Flutter WebView에서 JavaScript 핸들러로 네이티브 TTS 요청
+      if (isWebView()) {
+        console.log('📱 Flutter WebView 감지 - 네이티브 TTS 요청');
+
+        // flutter_inappwebview의 JavaScript 핸들러 호출
+        if (typeof (window as any).flutter_inappwebview !== 'undefined') {
+          try {
+            // callHandler 메서드 사용
+            (window as any).flutter_inappwebview.callHandler('FlutterTTS', text);
+            console.log('✅ Flutter 핸들러 호출 성공');
+            return;
+          } catch (e) {
+            console.warn('⚠️ Flutter 핸들러 호출 실패:', e);
+          }
+        }
+
+        // 폴백: postMessage 시도
+        if (typeof (window as any).flutter_inappwebview !== 'undefined') {
+          try {
+            (window as any).flutter_inappwebview.postMessage(JSON.stringify({
+              type: 'tts',
+              text: text,
+              lang: 'ko-KR'
+            }));
+            console.log('✅ Flutter postMessage 전송');
+            return;
+          } catch (e) {
+            console.warn('⚠️ Flutter postMessage 실패:', e);
+          }
+        }
+      }
+
+      // API 엔드포인트 호출
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, lang: 'ko-KR' })
+      });
+
+      const data = await response.json();
+
+      if (data.audioUrl) {
+        const audio = new Audio(data.audioUrl);
+        // WebView에서는 사용자 제스처 없이 재생 시도
+        audio.play().catch(e => {
+          console.error('오디오 재생 실패:', e);
+          // 재생 실패 시 클릭 이벤트 대기
+          const playOnClick = () => {
+            audio.play();
+            document.removeEventListener('click', playOnClick);
+          };
+          document.addEventListener('click', playOnClick);
+        });
+      }
+    } catch (error) {
+      console.error('폴백 TTS 실패:', error);
+    }
+  }, [isWebView]);
+
   // 음성 출력 함수 (웹앱/PWA 최적화)
   const speakSentence = useCallback((text: string) => {
+    // WebView 환경에서는 즉시 폴백 사용
+    if (isWebView()) {
+      console.log('📱 WebView 환경 감지 - 폴백 TTS 사용');
+      playFallbackTTS(text);
+      return;
+    }
+
     // speechSynthesis 지원 여부 확인
     if (typeof window === 'undefined' || !window.speechSynthesis) {
       console.warn('⚠️ speechSynthesis를 지원하지 않는 브라우저입니다');
+      playFallbackTTS(text); // 폴백 사용
       return;
     }
 
@@ -188,100 +277,137 @@ export default function MainPage() {
       function executeSpeech() {
         try {
           // 음성 목록 가져오기 (웹앱에서는 매번 확인 필요)
-          const voices = window.speechSynthesis.getVoices();
+          let voices = window.speechSynthesis.getVoices();
           console.log('📋 [웹앱] 사용 가능한 음성:', voices.length, '개');
 
-          // 웹앱 환경 확인
-          const isStandalone = window.matchMedia('(display-mode: standalone)').matches
-            || (window.navigator as { standalone?: boolean }).standalone === true
-            || document.referrer.includes('android-app://');
-          console.log('📱 웹앱 모드:', isStandalone ? '예' : '아니오');
+          // 음성 목록이 비어있으면 다시 시도
+          if (voices.length === 0) {
+            console.log('⚠️ 음성 목록이 비어있음, voiceschanged 이벤트 대기');
 
-          const utterance = new SpeechSynthesisUtterance(text);
+            // voiceschanged 이벤트가 이미 발생했는지 확인
+            const handleVoicesChanged = () => {
+              voices = window.speechSynthesis.getVoices();
+              console.log('📋 음성 목록 재로드:', voices.length, '개');
 
-          // 한국어 음성 찾기 (우선순위: Google > Samsung > 기타)
-          let koreanVoice = voices.find(voice =>
-            (voice.lang === 'ko-KR' || voice.lang.startsWith('ko')) &&
-            voice.name.includes('Google')
-          );
+              if (voices.length > 0) {
+                window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged);
+                proceedWithSpeech(voices);
+              }
+            };
 
-          if (!koreanVoice) {
-            koreanVoice = voices.find(voice =>
+            window.speechSynthesis.addEventListener('voiceschanged', handleVoicesChanged);
+
+            // 일부 브라우저에서는 getVoices() 호출로 음성 로드 트리거
+            setTimeout(() => {
+              voices = window.speechSynthesis.getVoices();
+              if (voices.length > 0) {
+                window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged);
+                proceedWithSpeech(voices);
+              }
+            }, 100);
+
+            return; // 음성이 로드될 때까지 대기
+          }
+
+          proceedWithSpeech(voices);
+
+          function proceedWithSpeech(voiceList: SpeechSynthesisVoice[]) {
+            console.log('🎤 음성 리스트로 TTS 진행, 음성 개수:', voiceList.length);
+
+            // 웹앱 환경 확인
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+              || (window.navigator as { standalone?: boolean }).standalone === true
+              || document.referrer.includes('android-app://');
+            console.log('📱 웹앱 모드:', isStandalone ? '예' : '아니오');
+
+            const utterance = new SpeechSynthesisUtterance(text);
+
+            // 한국어 음성 찾기 (우선순위: Google > Samsung > 기타)
+            let koreanVoice = voiceList.find(voice =>
               (voice.lang === 'ko-KR' || voice.lang.startsWith('ko')) &&
-              voice.name.includes('Samsung')
+              voice.name.includes('Google')
             );
+
+            if (!koreanVoice) {
+              koreanVoice = voiceList.find(voice =>
+                (voice.lang === 'ko-KR' || voice.lang.startsWith('ko')) &&
+                voice.name.includes('Samsung')
+              );
+            }
+
+            if (!koreanVoice) {
+              koreanVoice = voiceList.find(voice =>
+                voice.lang === 'ko-KR' || voice.lang.startsWith('ko')
+              );
+            }
+
+            if (koreanVoice) {
+              utterance.voice = koreanVoice;
+              console.log('🔊 [웹앱] 선택된 음성:', koreanVoice.name, '/', koreanVoice.lang);
+            } else {
+              console.log('⚠️ [웹앱] 한국어 음성 없음, 기본 음성 사용');
+              if (voiceList.length > 0) {
+                utterance.voice = voiceList[0];
+                console.log('🔊 [웹앱] 대체 음성:', voiceList[0].name);
+              }
+            }
+
+            // 웹앱 최적화 설정
+            utterance.lang = 'ko-KR';
+            utterance.rate = 1.0; // 웹앱에서는 1.0이 가장 안정적
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+
+            // 이벤트 핸들러
+            utterance.onstart = () => {
+              console.log('✅ [웹앱] 음성 출력 시작');
+            };
+
+            utterance.onend = () => {
+              console.log('✅ [웹앱] 음성 출력 완료');
+            };
+
+            utterance.onerror = (event) => {
+              // canceled 에러는 macOS Chrome 버그 - 폴백 사용
+              if (event.error === 'canceled') {
+                console.log('⚠️ [웹앱] macOS Chrome TTS 버그 감지 - 폴백 사용');
+                playFallbackTTS(text);
+                return;
+              }
+
+              console.error('❌ [웹앱] 음성 출력 에러:', event.error);
+
+              // 웹앱 특정 에러 처리
+              if (event.error === 'not-allowed') {
+                console.error('❌ [웹앱] 음성 권한 거부 - 사용자 제스처 필요');
+                playFallbackTTS(text);
+              } else if (event.error === 'network') {
+                console.error('❌ [웹앱] 네트워크 오류 - 오프라인 음성 사용 권장');
+                playFallbackTTS(text);
+              } else if (event.error === 'synthesis-failed') {
+                console.error('❌ [웹앱] 음성 합성 실패 - 폴백 사용');
+                playFallbackTTS(text);
+              }
+            };
+
+            // 음성 출력 실행
+            console.log('🎤 [웹앱] speak() 호출');
+            window.speechSynthesis.speak(utterance);
+
+            // 웹앱에서 일시정지 문제 방지
+            const resumeInterval = setInterval(() => {
+              if (window.speechSynthesis.speaking && window.speechSynthesis.paused) {
+                console.log('⚠️ [웹앱] TTS 일시정지 감지, resume 호출');
+                window.speechSynthesis.resume();
+              }
+              if (!window.speechSynthesis.speaking) {
+                clearInterval(resumeInterval);
+              }
+            }, 100);
+
+            // 10초 후 interval 정리
+            setTimeout(() => clearInterval(resumeInterval), 10000);
           }
-
-          if (!koreanVoice) {
-            koreanVoice = voices.find(voice =>
-              voice.lang === 'ko-KR' || voice.lang.startsWith('ko')
-            );
-          }
-
-          if (koreanVoice) {
-            utterance.voice = koreanVoice;
-            console.log('🔊 [웹앱] 선택된 음성:', koreanVoice.name, '/', koreanVoice.lang);
-          } else {
-            console.log('⚠️ [웹앱] 한국어 음성 없음, 기본 음성 사용');
-            if (voices.length > 0) {
-              utterance.voice = voices[0];
-              console.log('🔊 [웹앱] 대체 음성:', voices[0].name);
-            }
-          }
-
-          // 웹앱 최적화 설정
-          utterance.lang = 'ko-KR';
-          utterance.rate = 1.0; // 웹앱에서는 1.0이 가장 안정적
-          utterance.pitch = 1.0;
-          utterance.volume = 1.0;
-
-          // 이벤트 핸들러
-          utterance.onstart = () => {
-            console.log('✅ [웹앱] 음성 출력 시작');
-          };
-
-          utterance.onend = () => {
-            console.log('✅ [웹앱] 음성 출력 완료');
-          };
-
-          utterance.onerror = (event) => {
-            console.error('❌ [웹앱] 음성 출력 에러:', event.error);
-
-            // 웹앱 특정 에러 처리
-            if (event.error === 'not-allowed') {
-              console.error('❌ [웹앱] 음성 권한 거부 - 사용자 제스처 필요');
-            } else if (event.error === 'network') {
-              console.error('❌ [웹앱] 네트워크 오류 - 오프라인 음성 사용 권장');
-            } else if (event.error === 'synthesis-failed') {
-              console.error('❌ [웹앱] 음성 합성 실패 - 재시도 필요');
-              // 재시도
-              setTimeout(() => {
-                try {
-                  window.speechSynthesis.speak(utterance);
-                } catch {
-                  console.error('❌ [웹앱] 재시도 실패');
-                }
-              }, 200);
-            }
-          };
-
-          // 음성 출력 실행
-          console.log('🎤 [웹앱] speak() 호출');
-          window.speechSynthesis.speak(utterance);
-
-          // 웹앱에서 일시정지 문제 방지
-          const resumeInterval = setInterval(() => {
-            if (window.speechSynthesis.speaking && window.speechSynthesis.paused) {
-              console.log('⚠️ [웹앱] TTS 일시정지 감지, resume 호출');
-              window.speechSynthesis.resume();
-            }
-            if (!window.speechSynthesis.speaking) {
-              clearInterval(resumeInterval);
-            }
-          }, 100);
-
-          // 10초 후 interval 정리
-          setTimeout(() => clearInterval(resumeInterval), 10000);
 
         } catch (execError) {
           console.error('❌ [웹앱] executeSpeech 에러:', execError);
@@ -289,8 +415,10 @@ export default function MainPage() {
       }
     } catch (error) {
       console.error('❌ [웹앱] speechSynthesis 에러:', error);
+      // 전체 실패 시에도 폴백 사용
+      playFallbackTTS(text);
     }
-  }, []);
+  }, [playFallbackTTS, isWebView]);
 
   // 단계별 뒤로가기
   const handleBack = useCallback(() => {

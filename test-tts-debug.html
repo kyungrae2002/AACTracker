@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTS 디버깅</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        button {
+            padding: 12px 24px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #1976D2;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        #log {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            margin-top: 20px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .error { color: #ff6b6b; }
+        .success { color: #51cf66; }
+        .warning { color: #ffd43b; }
+    </style>
+</head>
+<body>
+    <h1>TTS 문제 진단 도구</h1>
+
+    <div class="test-section">
+        <h2>1. 시스템 체크</h2>
+        <button onclick="checkSystem()">시스템 상태 확인</button>
+        <button onclick="checkSpeaking()">현재 말하기 상태</button>
+    </div>
+
+    <div class="test-section">
+        <h2>2. 기본 테스트</h2>
+        <button onclick="testMinimal()">최소 코드 테스트</button>
+        <button onclick="testWithoutCancel()">Cancel 없이 테스트</button>
+        <button onclick="testWithPause()">Pause/Resume 테스트</button>
+    </div>
+
+    <div class="test-section">
+        <h2>3. 타이밍 테스트</h2>
+        <button onclick="testImmediate()">즉시 실행</button>
+        <button onclick="testDelayed(100)">100ms 지연</button>
+        <button onclick="testDelayed(500)">500ms 지연</button>
+        <button onclick="testDelayed(1000)">1초 지연</button>
+    </div>
+
+    <div class="test-section">
+        <h2>4. 음성 테스트</h2>
+        <button onclick="testDefaultVoice()">기본 음성</button>
+        <button onclick="testFirstVoice()">첫 번째 음성</button>
+        <button onclick="testKoreanVoice()">한국어 음성</button>
+        <button onclick="testEnglishVoice()">영어 음성</button>
+    </div>
+
+    <div class="test-section">
+        <h2>5. 해결 방법 시도</h2>
+        <button onclick="fixMethod1()">방법1: 더미 스피크</button>
+        <button onclick="fixMethod2()">방법2: 연속 시도</button>
+        <button onclick="fixMethod3()">방법3: 이벤트 리스너</button>
+        <button onclick="fixMethod4()">방법4: Promise 체인</button>
+    </div>
+
+    <button onclick="clearLog()" style="background: #666;">로그 지우기</button>
+
+    <div id="log"></div>
+
+    <script>
+        const log = (message, type = '') => {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type ? ` class="${type}"` : '';
+            logDiv.innerHTML += `<span${className}>[${timestamp}] ${message}</span>\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        };
+
+        // 1. 시스템 체크
+        function checkSystem() {
+            log('=== 시스템 상태 확인 ===', 'warning');
+
+            // Speech API 지원 확인
+            if ('speechSynthesis' in window) {
+                log('✓ speechSynthesis 지원됨', 'success');
+            } else {
+                log('✗ speechSynthesis 미지원', 'error');
+                return;
+            }
+
+            // 음성 목록
+            const voices = speechSynthesis.getVoices();
+            log(`음성 개수: ${voices.length}개`);
+
+            // 상태 확인
+            log(`speaking: ${speechSynthesis.speaking}`);
+            log(`pending: ${speechSynthesis.pending}`);
+            log(`paused: ${speechSynthesis.paused}`);
+
+            // 브라우저 정보
+            log(`브라우저: ${navigator.userAgent.substring(0, 50)}...`);
+
+            // 권한 확인 (가능한 경우)
+            if (navigator.permissions) {
+                navigator.permissions.query({ name: 'microphone' })
+                    .then(result => log(`마이크 권한: ${result.state}`))
+                    .catch(e => log(`권한 확인 실패: ${e.message}`, 'error'));
+            }
+        }
+
+        function checkSpeaking() {
+            log(`현재 speaking: ${speechSynthesis.speaking}`);
+            log(`현재 pending: ${speechSynthesis.pending}`);
+            log(`현재 paused: ${speechSynthesis.paused}`);
+        }
+
+        // 2. 기본 테스트
+        function testMinimal() {
+            log('=== 최소 코드 테스트 ===', 'warning');
+            const u = new SpeechSynthesisUtterance('테스트');
+            u.onend = () => log('종료', 'success');
+            u.onerror = (e) => log(`에러: ${e.error}`, 'error');
+            speechSynthesis.speak(u);
+        }
+
+        function testWithoutCancel() {
+            log('=== Cancel 없이 테스트 ===', 'warning');
+            const u = new SpeechSynthesisUtterance('취소 없이 테스트');
+            u.onstart = () => log('시작', 'success');
+            u.onend = () => log('종료', 'success');
+            u.onerror = (e) => log(`에러: ${e.error}`, 'error');
+            speechSynthesis.speak(u);
+        }
+
+        function testWithPause() {
+            log('=== Pause/Resume 테스트 ===', 'warning');
+            speechSynthesis.cancel();
+
+            const u = new SpeechSynthesisUtterance('일시정지 테스트 문장입니다.');
+            u.onstart = () => {
+                log('시작', 'success');
+                setTimeout(() => {
+                    speechSynthesis.pause();
+                    log('일시정지');
+                    setTimeout(() => {
+                        speechSynthesis.resume();
+                        log('재개');
+                    }, 1000);
+                }, 500);
+            };
+            u.onend = () => log('종료', 'success');
+            u.onerror = (e) => log(`에러: ${e.error}`, 'error');
+            speechSynthesis.speak(u);
+        }
+
+        // 3. 타이밍 테스트
+        function testImmediate() {
+            log('=== 즉시 실행 ===', 'warning');
+            speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance('즉시');
+            u.onerror = (e) => log(`에러: ${e.error}`, 'error');
+            u.onend = () => log('완료', 'success');
+            speechSynthesis.speak(u);
+        }
+
+        function testDelayed(ms) {
+            log(`=== ${ms}ms 지연 실행 ===`, 'warning');
+            speechSynthesis.cancel();
+            setTimeout(() => {
+                const u = new SpeechSynthesisUtterance(`${ms}밀리초 지연`);
+                u.onerror = (e) => log(`에러: ${e.error}`, 'error');
+                u.onend = () => log('완료', 'success');
+                speechSynthesis.speak(u);
+            }, ms);
+        }
+
+        // 4. 음성 테스트
+        function testDefaultVoice() {
+            log('=== 기본 음성 ===', 'warning');
+            speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance('기본 음성 테스트');
+            u.onerror = (e) => log(`에러: ${e.error}`, 'error');
+            u.onend = () => log('완료', 'success');
+            speechSynthesis.speak(u);
+        }
+
+        function testFirstVoice() {
+            log('=== 첫 번째 음성 ===', 'warning');
+            const voices = speechSynthesis.getVoices();
+            if (voices.length === 0) {
+                log('음성 없음', 'error');
+                return;
+            }
+
+            speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance('첫 번째 음성');
+            u.voice = voices[0];
+            log(`선택된 음성: ${voices[0].name}`);
+            u.onerror = (e) => log(`에러: ${e.error}`, 'error');
+            u.onend = () => log('완료', 'success');
+            speechSynthesis.speak(u);
+        }
+
+        function testKoreanVoice() {
+            log('=== 한국어 음성 ===', 'warning');
+            const voices = speechSynthesis.getVoices();
+            const korean = voices.find(v => v.lang.includes('ko'));
+
+            if (!korean) {
+                log('한국어 음성 없음', 'error');
+                return;
+            }
+
+            speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance('한국어 음성 테스트');
+            u.voice = korean;
+            u.lang = 'ko-KR';
+            log(`선택된 음성: ${korean.name}`);
+            u.onerror = (e) => log(`에러: ${e.error}`, 'error');
+            u.onend = () => log('완료', 'success');
+            speechSynthesis.speak(u);
+        }
+
+        function testEnglishVoice() {
+            log('=== 영어 음성 ===', 'warning');
+            speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance('Hello World');
+            u.lang = 'en-US';
+            u.onerror = (e) => log(`에러: ${e.error}`, 'error');
+            u.onend = () => log('완료', 'success');
+            speechSynthesis.speak(u);
+        }
+
+        // 5. 해결 방법들
+        function fixMethod1() {
+            log('=== 방법1: 더미 스피크 ===', 'warning');
+
+            // 더미로 빈 텍스트 말하기
+            const dummy = new SpeechSynthesisUtterance('');
+            speechSynthesis.speak(dummy);
+
+            setTimeout(() => {
+                speechSynthesis.cancel();
+                const u = new SpeechSynthesisUtterance('더미 후 실제 텍스트');
+                u.onerror = (e) => log(`에러: ${e.error}`, 'error');
+                u.onend = () => log('완료', 'success');
+                u.onstart = () => log('시작', 'success');
+                speechSynthesis.speak(u);
+            }, 100);
+        }
+
+        function fixMethod2() {
+            log('=== 방법2: 연속 시도 ===', 'warning');
+
+            let attempts = 0;
+            const maxAttempts = 3;
+
+            function trySpeak() {
+                attempts++;
+                log(`시도 ${attempts}/${maxAttempts}`);
+
+                const u = new SpeechSynthesisUtterance(`시도 ${attempts}`);
+                u.onerror = (e) => {
+                    log(`에러: ${e.error}`, 'error');
+                    if (attempts < maxAttempts && e.error === 'canceled') {
+                        setTimeout(trySpeak, 200);
+                    }
+                };
+                u.onend = () => log('완료!', 'success');
+
+                speechSynthesis.cancel();
+                setTimeout(() => speechSynthesis.speak(u), 50);
+            }
+
+            trySpeak();
+        }
+
+        function fixMethod3() {
+            log('=== 방법3: 이벤트 리스너 ===', 'warning');
+
+            // 모든 이벤트 리스너 등록
+            const u = new SpeechSynthesisUtterance('이벤트 리스너 테스트');
+
+            u.onstart = (e) => log(`start 이벤트`, 'success');
+            u.onend = (e) => log(`end 이벤트`, 'success');
+            u.onerror = (e) => log(`error 이벤트: ${e.error}`, 'error');
+            u.onpause = (e) => log(`pause 이벤트`);
+            u.onresume = (e) => log(`resume 이벤트`);
+            u.onmark = (e) => log(`mark 이벤트`);
+            u.onboundary = (e) => log(`boundary 이벤트`);
+
+            // 속성 설정
+            u.rate = 1.0;
+            u.pitch = 1.0;
+            u.volume = 1.0;
+
+            speechSynthesis.cancel();
+
+            // 사용자 제스처 컨텍스트 유지
+            requestAnimationFrame(() => {
+                speechSynthesis.speak(u);
+            });
+        }
+
+        function fixMethod4() {
+            log('=== 방법4: Promise 체인 ===', 'warning');
+
+            const speak = (text) => {
+                return new Promise((resolve, reject) => {
+                    const u = new SpeechSynthesisUtterance(text);
+                    u.onend = () => resolve('완료');
+                    u.onerror = (e) => reject(e.error);
+
+                    speechSynthesis.cancel();
+
+                    // 마이크로태스크 큐 사용
+                    Promise.resolve().then(() => {
+                        speechSynthesis.speak(u);
+                    });
+                });
+            };
+
+            speak('Promise 테스트')
+                .then(result => log(result, 'success'))
+                .catch(error => log(`에러: ${error}`, 'error'));
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            log('로그 초기화됨', 'success');
+        }
+
+        // 초기화
+        window.addEventListener('load', () => {
+            log('페이지 로드 완료', 'success');
+
+            // 음성 로드
+            if (speechSynthesis.getVoices().length === 0) {
+                speechSynthesis.onvoiceschanged = () => {
+                    log(`음성 로드됨: ${speechSynthesis.getVoices().length}개`, 'success');
+                };
+            } else {
+                log(`음성 준비됨: ${speechSynthesis.getVoices().length}개`, 'success');
+            }
+        });
+    </script>
+</body>
+</html>
