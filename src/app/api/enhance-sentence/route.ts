@@ -16,10 +16,10 @@ const getOpenAI = () => {
   return openai;
 };
 
-const SYSTEM_MESSAGE = `너는 문장 변환 AI다. 너의 유일한 임무는 입력된 정보를 실제 대화에서 사용하는 자연스러운 한국어 문장으로 변환하는 것이다.
+const SYSTEM_MESSAGE = `너는 문장 변환 전문가다. 너의 유일한 임무는 입력된 정보를 실제 대화에서 사용하는 자연스러운 한국어 문장으로 변환하는 것이다.
 
 ## 핵심 규칙
-1. **출력:** 변환된 문장 **하나만** 출력한다. 어떤 설명도, 인사도, 따옴표도 붙이지 않는다.
+1. **출력:** 변환된 문장 **하나만** 출력한다. 어떤 설명도, 인사도, 따옴표도 붙이지 않는다,.
 2. **간결성:** 문장을 절대 길게 만들지 않는다. 불필요한 수식어, 부사(예: '매우', '정말')를 억제하고 핵심만 말한다.
 3. **주어 생략:** '나', '너' 같은 주어는 문맥상 불필요하면 생략한다.
 4. **말투 준수:** 아래 [말투별 변환 규칙]을 **반드시** 따른다.`;
@@ -31,7 +31,7 @@ const PROMPT_TEMPLATES = {
 
 ### "politeness: casual" (반말 모드)
 * **목표:** 친구, 가족에게 말하는 편안한 반말.
-* **금지:** 절대로 '해요', '입니다', '-시-' 같은 존댓말을 쓰지 않는다.
+* **금지:** 절대로 '해요', '입니다', '-시-' 같은 존댓말을 쓰지 않는다 기본은 기본 상태를 지칭한다. 문장에 넣지 않는다.
 
 **예시 (평서문):**
 - 입력: { "subject": "나", "predicate": "배고프다", "politeness": "casual" }
@@ -91,30 +91,9 @@ const PROMPT_TEMPLATES = {
 위 규칙에 따라 변환된 문장만 출력하세요.`
 };
 
-// 요청 본문 타입 정의
-interface EnhanceSentenceRequest {
-  originalSentence?: string;
-  isQuestion?: boolean;
-  politeness?: 'casual' | 'formal';
-}
-
 export async function POST(request: NextRequest) {
   try {
-    // 요청 본문 파싱 (빈 요청 처리)
-    let body: EnhanceSentenceRequest = {};
-    try {
-      const text = await request.text();
-      if (text) {
-        body = JSON.parse(text) as EnhanceSentenceRequest;
-      }
-    } catch (parseError) {
-      console.error('요청 본문 파싱 오류:', parseError);
-      return NextResponse.json(
-        { error: 'Invalid request body', sentence: '' },
-        { status: 400 }
-      );
-    }
-
+    const body = await request.json();
     const {
       originalSentence = '',
       isQuestion = false,
@@ -122,9 +101,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // API 키 확인
-    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your-api-key-here') {
-      console.warn('⚠️ OpenAI API 키가 설정되지 않았습니다. 원본 문장을 반환합니다.');
-      console.warn('→ .env.local 파일에 OPENAI_API_KEY를 설정하세요.');
+    if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
         { error: 'OpenAI API key not configured', sentence: originalSentence },
         { status: 200 }
@@ -167,7 +144,7 @@ export async function POST(request: NextRequest) {
         { role: 'system', content: SYSTEM_MESSAGE },
         { role: 'user', content: prompt }
       ],
-      temperature: 0.7,
+      temperature: 0.4,
       max_tokens: 50,
     });
 
@@ -183,10 +160,19 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error enhancing sentence:', error);
 
-    // 에러 발생 시 원본 문장 반환
-    return NextResponse.json(
-      { error: 'Failed to enhance sentence', sentence: '' },
-      { status: 200 }
-    );
+    // 에러 발생 시에도 원본 문장 반환 시도
+    try {
+      const body = await request.json().catch(() => ({}));
+      const originalSentence = body.originalSentence || '';
+      return NextResponse.json(
+        { error: 'Failed to enhance sentence', sentence: originalSentence },
+        { status: 200 }
+      );
+    } catch {
+      return NextResponse.json(
+        { error: 'Failed to enhance sentence', sentence: '' },
+        { status: 200 }
+      );
+    }
   }
 }
