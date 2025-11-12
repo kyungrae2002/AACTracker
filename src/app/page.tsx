@@ -454,6 +454,7 @@ export default function MainPage() {
   const handleBack = useCallback(() => {
     // 모달이 표시 중이면 뒤로가기 차단
     if (showCompletionModal) {
+      console.log('🚫 모달 표시 중 - 뒤로가기 차단됨');
       return;
     }
 
@@ -530,6 +531,7 @@ export default function MainPage() {
   const handleSelection = useCallback((buttonId: string) => {
     // 모달이 표시 중이면 선택 차단
     if (showCompletionModal) {
+      console.log('🚫 모달 표시 중 - 선택 차단됨');
       return;
     }
 
@@ -600,6 +602,7 @@ export default function MainPage() {
   const handleZoneChange = useCallback((direction: 'left' | 'right') => {
     // 모달이 표시 중이면 Zone 변경 차단
     if (showCompletionModal) {
+      console.log('🚫 모달 표시 중 - Zone 변경 차단됨');
       return;
     }
 
@@ -770,8 +773,9 @@ export default function MainPage() {
         buttonContainerLeft={buttonContainerStyle.leftNumber}
         buttonContainerWidth={buttonContainerStyle.totalWidthNumber}
       >
+        {/* 버튼 컨테이너 - 모달 중에는 포인터 이벤트 비활성화 */}
         <div
-          className="absolute flex"
+          className={`absolute flex ${showCompletionModal ? 'pointer-events-none' : ''}`}
           style={buttonContainerStyle}
         >
           {getCurrentPageOptions().map((option, index) => (
