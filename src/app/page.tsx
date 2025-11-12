@@ -265,10 +265,12 @@ export default function MainPage() {
       // 이전 음성 중지 및 큐 초기화
       try {
         window.speechSynthesis.cancel();
-        // 웹앱에서는 짧은 대기 후 실행이 더 안정적
+        // 크롬에서는 더 긴 대기 시간 필요 (100-200ms)
+        const isChrome = /Chrome|Chromium|Edg/.test(navigator.userAgent) && !/Safari/.test(navigator.userAgent);
+        const delay = isChrome ? 200 : 50;
         setTimeout(() => {
           executeSpeech();
-        }, 50);
+        }, delay);
       } catch (cancelError) {
         console.warn('⚠️ 음성 중지 실패:', cancelError);
         executeSpeech();
@@ -368,14 +370,18 @@ export default function MainPage() {
             };
 
             utterance.onerror = (event) => {
-              // canceled 에러는 macOS Chrome 버그 - 폴백 사용
+              console.error('❌ [웹앱] 음성 출력 에러:', event.error);
+
+              // 모든 에러에서 폴백 사용하지 않고 한 번 더 시도
               if (event.error === 'canceled') {
-                console.log('⚠️ [웹앱] macOS Chrome TTS 버그 감지 - 폴백 사용');
-                playFallbackTTS(text);
+                console.log('⚠️ [웹앱] Chrome TTS canceled 에러 - 재시도');
+                // 재시도: cancel 후 더 긴 딜레이로 다시 실행
+                window.speechSynthesis.cancel();
+                setTimeout(() => {
+                  window.speechSynthesis.speak(utterance);
+                }, 300);
                 return;
               }
-
-              console.error('❌ [웹앱] 음성 출력 에러:', event.error);
 
               // 웹앱 특정 에러 처리
               if (event.error === 'not-allowed') {
@@ -392,7 +398,18 @@ export default function MainPage() {
 
             // 음성 출력 실행
             console.log('🎤 [웹앱] speak() 호출');
-            window.speechSynthesis.speak(utterance);
+
+            // 크롬에서는 speaking 상태 확인 후 실행
+            const isChrome = /Chrome|Chromium|Edg/.test(navigator.userAgent) && !/Safari/.test(navigator.userAgent);
+            if (isChrome && window.speechSynthesis.speaking) {
+              console.log('⚠️ [크롬] 이전 음성이 아직 재생 중, 취소 후 재실행');
+              window.speechSynthesis.cancel();
+              setTimeout(() => {
+                window.speechSynthesis.speak(utterance);
+              }, 200);
+            } else {
+              window.speechSynthesis.speak(utterance);
+            }
 
             // 웹앱에서 일시정지 문제 방지
             const resumeInterval = setInterval(() => {
