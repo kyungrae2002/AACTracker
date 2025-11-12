@@ -21,8 +21,32 @@ const SelectionButton = forwardRef<HTMLButtonElement, SelectionButtonProps>(
     // customWidth가 있으면 사용, 없으면 기본값 사용
     const buttonWidth = customWidth ? `${customWidth}px` : '240px';
     const buttonHeight = '400px';
-    const fontSize = '64px';
-    const lineHeight = '73px';
+
+    // 박스 너비에 비례하여 폰트 크기 계산
+    const actualWidth = customWidth || 240;
+    const horizontalPadding = 54 * 2; // 좌우 padding 합계
+    const availableWidth = actualWidth - horizontalPadding; // 실제 텍스트 사용 가능한 너비
+    
+    // 텍스트 길이
+    const textLength = label.length;
+    
+    // 한글은 대략 1em(폰트 크기)의 너비를 차지
+    // availableWidth를 텍스트 길이로 나누면 글자당 사용 가능한 너비
+    const maxFontSizeByWidth = availableWidth / textLength;
+    
+    // 박스 크기 기반 최대 폰트 크기 (원래 로직)
+    const baseFontSize = availableWidth * 0.35;
+    
+    // 두 값 중 작은 값을 사용하여 텍스트가 절대 넘치지 않도록 함
+    const calculatedFontSize = Math.min(maxFontSizeByWidth * 0.9, baseFontSize);
+    
+    // 최소/최대 폰트 크기 제한
+    const minFontSize = 20;
+    const maxFontSize = 120;
+    const finalFontSize = Math.max(minFontSize, Math.min(maxFontSize, calculatedFontSize));
+
+    const fontSize = `${finalFontSize}px`;
+    const lineHeight = `${finalFontSize * 1.14}px`;
 
     // 선택 상태에 따른 스타일
     const getButtonStyle = () => {
@@ -72,7 +96,8 @@ const SelectionButton = forwardRef<HTMLButtonElement, SelectionButtonProps>(
                 style={{
                   fontSize: fontSize,
                   lineHeight: lineHeight,
-                  letterSpacing: '0.01em'
+                  letterSpacing: '0.01em',
+                  whiteSpace: 'nowrap'
                 }}>
             {label}
           </span>
