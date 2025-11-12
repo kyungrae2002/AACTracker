@@ -75,6 +75,10 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
   const frameSkipCountRef = useRef(0);
   const lastValidPositionRef = useRef<Position | null>(null);
 
+  // 에러 카운터 및 자동 재시작 관련
+  const errorCountRef = useRef(0);
+  const MAX_ERRORS_BEFORE_RELOAD = 1; // 에러 발생 시 즉시 재시작
+
   // 눈 깜빡임 감지 관련 상태
   const isBlinkingRef = useRef(false);
   const blinkStartTimeRef = useRef<number | null>(null);
@@ -109,6 +113,20 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
   const BASELINE_HISTORY_SIZE = 90; // 3초간의 EAR 데이터 (30fps 기준)
   const BASELINE_MIN_SAMPLES = 30; // 최소 1초의 데이터가 쌓여야 적응형 임계값 사용
   const BASELINE_UPDATE_RATIO = 0.85; // 기준값의 85%를 임계값으로 사용
+
+  // 자동 재시작 함수 (에러 누적 시 페이지 새로고침)
+  const handleCriticalError = useCallback(() => {
+    errorCountRef.current += 1;
+
+    if (errorCountRef.current >= MAX_ERRORS_BEFORE_RELOAD) {
+      // 5회 연속 에러 발생 시 3초 후 자동 새로고침
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          window.location.reload();
+        }
+      }, 3000);
+    }
+  }, []);
 
   // 프로덕션 환경 체크
   useEffect(() => {
@@ -166,10 +184,10 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
       });
     } catch (error) {
       if (retryCount < MAX_RETRIES) {
-        console.log(`스크립트 로드 재시도 중... (${retryCount + 1}/${MAX_RETRIES})`);
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
         return loadMediaPipeScripts(retryCount + 1);
       } else {
+        handleCriticalError();
         throw error;
       }
     }
@@ -188,9 +206,11 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
       try {
         if (videoRef.current.readyState >= 2 && faceMeshRef.current) {
           await faceMeshRef.current.send({ image: videoRef.current });
+          // 성공하면 에러 카운터 리셋
+          errorCountRef.current = 0;
         }
       } catch (error) {
-        console.error('프레임 처리 오류:', error);
+        handleCriticalError();
       }
     }
 
@@ -314,7 +334,7 @@ const IrisTracker: React.FC<IrisTrackerProps> = ({ onLongBlink, onDoubleBlink, o
         }
       }
     } catch (error) {
-      console.error('눈 깜빡임 감지 오류:', error);
+      handleCriticalError();
     }
   }, [calculateEAR, onLongBlink, onDoubleBlink, updateAdaptiveThreshold]);
 

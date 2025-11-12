@@ -8,6 +8,18 @@ import { categories, subjects, coreWords, predicates, buildSentence, WordOption 
 import { useRegisterIrisHandlers } from '@/contexts/IrisTrackerContext';
 import { getEnhancedSentence } from '@/services/gptService';
 
+// Flutter WebView 인터페이스 타입 정의
+interface FlutterInAppWebView {
+  callHandler: (handlerName: string, ...args: string[]) => void;
+  postMessage: (message: string) => void;
+}
+
+interface FlutterWindow extends Window {
+  flutter_inappwebview?: FlutterInAppWebView;
+  FlutterWebView?: FlutterInAppWebView;
+  FlutterTTS?: FlutterInAppWebView;
+}
+
 export type SelectionStep = 'category' | 'subject' | 'coreWord' | 'predicate';
 
 export default function MainPage() {
@@ -172,9 +184,9 @@ export default function MainPage() {
                              (ua.includes('webkit') && !ua.includes('safari'));
 
     // Flutter에서 주입한 JavaScript 인터페이스 확인
-    const hasFlutterInterface = typeof (window as any).flutter_inappwebview !== 'undefined' ||
-                               typeof (window as any).FlutterWebView !== 'undefined' ||
-                               typeof (window as any).FlutterTTS !== 'undefined';
+    const hasFlutterInterface = typeof (window as FlutterWindow).flutter_inappwebview !== 'undefined' ||
+                               typeof (window as FlutterWindow).FlutterWebView !== 'undefined' ||
+                               typeof (window as FlutterWindow).FlutterTTS !== 'undefined';
 
     return isFlutterWebView || hasFlutterInterface;
   }, []);
@@ -189,10 +201,10 @@ export default function MainPage() {
         console.log('📱 Flutter WebView 감지 - 네이티브 TTS 요청');
 
         // flutter_inappwebview의 JavaScript 핸들러 호출
-        if (typeof (window as any).flutter_inappwebview !== 'undefined') {
+        if (typeof (window as FlutterWindow).flutter_inappwebview !== 'undefined') {
           try {
             // callHandler 메서드 사용
-            (window as any).flutter_inappwebview.callHandler('FlutterTTS', text);
+            (window as FlutterWindow).flutter_inappwebview?.callHandler('FlutterTTS', text);
             console.log('✅ Flutter 핸들러 호출 성공');
             return;
           } catch (e) {
@@ -201,9 +213,9 @@ export default function MainPage() {
         }
 
         // 폴백: postMessage 시도
-        if (typeof (window as any).flutter_inappwebview !== 'undefined') {
+        if (typeof (window as FlutterWindow).flutter_inappwebview !== 'undefined') {
           try {
-            (window as any).flutter_inappwebview.postMessage(JSON.stringify({
+            (window as FlutterWindow).flutter_inappwebview?.postMessage(JSON.stringify({
               type: 'tts',
               text: text,
               lang: 'ko-KR'
