@@ -117,21 +117,45 @@ class _WebViewScreenState extends State<WebViewScreen> {
                   url: WebUri(webUrl),
                 ),
                 initialSettings: InAppWebViewSettings(
+                  // JavaScript 설정
                   javaScriptEnabled: true,
+                  javaScriptCanOpenWindowsAutomatically: true,
+
+                  // 미디어 재생 설정 (TTS 핵심)
                   mediaPlaybackRequiresUserGesture: false,
                   allowsInlineMediaPlayback: true,
-                  javaScriptCanOpenWindowsAutomatically: true,
+
+                  // WebView 모드 설정
                   useHybridComposition: true,
-                  // TTS 작동을 위한 추가 설정
+
+                  // 스토리지 설정
                   domStorageEnabled: true,
                   databaseEnabled: true,
+
+                  // 파일 접근 권한
                   allowFileAccessFromFileURLs: true,
                   allowUniversalAccessFromFileURLs: true,
+                  allowFileAccess: true,
+
+                  // 콘텐츠 설정
                   mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+
                   // 하드웨어 가속
                   hardwareAcceleration: true,
-                  // 자동재생 허용
+
+                  // 네비게이션
                   allowsBackForwardNavigationGestures: true,
+
+                  // 캐시 설정 (TTS 오디오 캐싱)
+                  cacheEnabled: true,
+                  clearCache: false,
+
+                  // 네트워크 설정
+                  supportZoom: false,
+
+                  // Android 전용 설정
+                  safeBrowsingEnabled: false,
+                  disableDefaultErrorPage: false,
                 ),
                 onWebViewCreated: (controller) {
                   _webViewController = controller;
@@ -159,6 +183,66 @@ class _WebViewScreenState extends State<WebViewScreen> {
                   setState(() {
                     _isLoading = false;
                   });
+
+                  debugPrint('✅ WebView 페이지 로드 완료: $url');
+
+                  // 약간의 딜레이 후 JavaScript 주입 (페이지 완전 로드 대기)
+                  await Future.delayed(const Duration(milliseconds: 500));
+
+                  // WebView 환경임을 알리고 네이티브 TTS를 사용하도록 JavaScript 주입
+                  debugPrint('🔧 JavaScript 주입 시작...');
+                  try {
+                    await controller.evaluateJavascript(source: """
+                    (function() {
+                      console.log('🔧 [WebView] TTS 오버라이드 주입 시작');
+
+                      // WebView 환경 표시
+                      window.isFlutterWebView = true;
+
+                      // speechSynthesis를 네이티브 TTS로 대체
+                      if (window.speechSynthesis) {
+                        const originalSpeak = window.speechSynthesis.speak.bind(window.speechSynthesis);
+
+                        window.speechSynthesis.speak = function(utterance) {
+                          console.log('🔊 [WebView] TTS 요청 감지:', utterance.text);
+
+                          // 네이티브 TTS 호출
+                          if (window.flutter_inappwebview) {
+                            try {
+                              window.flutter_inappwebview.callHandler('FlutterTTS', utterance.text);
+                              console.log('✅ [WebView] 네이티브 TTS 호출 성공');
+
+                              // onstart 이벤트 트리거
+                              if (utterance.onstart) {
+                                setTimeout(() => utterance.onstart(), 10);
+                              }
+
+                              // onend 이벤트 트리거 (3초 후 - 실제 TTS 길이에 따라 조정)
+                              if (utterance.onend) {
+                                const estimatedDuration = utterance.text.length * 100;
+                                setTimeout(() => utterance.onend(), estimatedDuration);
+                              }
+                            } catch (e) {
+                              console.error('❌ [WebView] 네이티브 TTS 호출 실패:', e);
+                              // 폴백: 원본 Web Speech API 사용
+                              originalSpeak(utterance);
+                            }
+                          } else {
+                            console.warn('⚠️ [WebView] flutter_inappwebview 없음, 원본 API 사용');
+                            originalSpeak(utterance);
+                          }
+                        };
+
+                        console.log('✅ [WebView] speechSynthesis.speak 오버라이드 완료');
+                      } else {
+                        console.warn('⚠️ [WebView] speechSynthesis 지원 안됨');
+                      }
+                    })();
+                  """);
+                    debugPrint('✅ JavaScript 주입 완료');
+                  } catch (e) {
+                    debugPrint('❌ JavaScript 주입 실패: $e');
+                  }
                 },
                 onProgressChanged: (controller, progress) {
                   setState(() {
@@ -174,6 +258,10 @@ class _WebViewScreenState extends State<WebViewScreen> {
                     _hasError = true;
                   });
                   debugPrint('WebView error: ${error.description}');
+                },
+                // 웹 콘솔 로그를 Flutter 콘솔에 출력
+                onConsoleMessage: (controller, consoleMessage) {
+                  debugPrint('[WebView Console] ${consoleMessage.messageLevel}: ${consoleMessage.message}');
                 },
                 // 🎯 핵심: WebView 권한 처리 (카메라/마이크)
                 onPermissionRequest: (controller, request) async {
