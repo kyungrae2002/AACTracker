@@ -159,7 +159,8 @@ export default function MainPage() {
   const getCurrentPageOptions = useCallback((): WordOption[] => {
     const allOptions = getAllOptions();
 
-    if (currentStep === 'category') {
+    // category와 subject 단계에서는 페이지네이션 없이 전체 표시
+    if (currentStep === 'category' || currentStep === 'subject') {
       return allOptions;
     }
 
