@@ -163,8 +163,13 @@ export default function AALayout({
           />
           {/* 텍스트 */}
           <span
-            className="font-['NanumSquareRound'] font-bold text-[#1A1A1A]"
-            style={{ fontSize: '48px', lineHeight: '54px', letterSpacing: '0.01em' }}
+            className="font-['NanumSquareRound'] font-bold"
+            style={{
+              fontSize: '48px',
+              lineHeight: '54px',
+              letterSpacing: '0.01em',
+              color: outputText === '문장을 생성하는 중입니다...' || !outputText ? '#A1A1A1' : '#1A1A1A'
+            }}
           >
             {outputText || '문장이 여기에 표시됩니다'}
           </span>

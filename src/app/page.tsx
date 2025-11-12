@@ -522,6 +522,11 @@ export default function MainPage() {
 
   // 선택 처리 함수
   const handleSelection = useCallback((buttonId: string) => {
+    // 모달이 표시 중이면 선택 차단
+    if (showCompletionModal) {
+      return;
+    }
+
     if (buttonId === 'next_page') {
       const allOptions = getAllOptions();
       const nextPageStart = (currentPage + 1) * 4;
